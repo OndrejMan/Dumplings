@@ -9,7 +9,7 @@ namespace Dumplings.Scanning
 {
     /// <summary>
     /// Streaming, crash-safe bookkeeping for the append-only Scanner files, which reach gigabytes on mainnet.
-    /// After every block the scanner records the height and the length of each output file. A
+    /// After every batch of blocks the scanner records the height and the length of each output file. A
     /// process killed before the next commit leaves extra bytes behind, which <see cref="Restore"/> cuts off
     /// before those blocks are scanned again, so no detection is lost and none is written twice.
     /// </summary>
