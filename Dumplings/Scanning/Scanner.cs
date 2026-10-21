@@ -37,6 +37,8 @@ namespace Dumplings.Scanning
         public static readonly string SamouraiPostMixTxsPath = Path.Combine(WorkFolder, "SamouraiPostMixTxs.txt");
         public static readonly string OtherCoinJoinPostMixTxsPath = Path.Combine(WorkFolder, "OtherCoinJoinPostMixTxs.txt");
         public static readonly string CheckpointPath = Path.Combine(WorkFolder, "Checkpoint.txt");
+        private const int CommitEveryBlocks = 100;
+        private static readonly TimeSpan CommitInterval = TimeSpan.FromSeconds(60);
 
         private static readonly string[] OutputPaths =
         {
@@ -150,6 +152,9 @@ namespace Dumplings.Scanning
             ulong totalBlocks = bestHeight - height + 1;
             Logger.LogInfo($"About {totalBlocks} ({totalBlocks / 144} days) blocks will be processed.");
 
+            // fsync of nine files per block would dominate a full scan on network storage.
+            var pendingBlocks = 0;
+            var commitWatch = Stopwatch.StartNew();
             var stopWatch = new Stopwatch();
             var processedBlocksWhenSwStarted = CalculateProcessedBlocks(height, bestHeight, totalBlocks);
             stopWatch.Start();
@@ -367,9 +372,14 @@ namespace Dumplings.Scanning
                             }
                             else
                             {
+                                // Commit first: a rewrite shifts every later line, so no uncommitted
+                                // block may sit behind the checkpoint a crash would restore.
+                                ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height - 1, OutputPaths);
                                 ScanCheckpoint.RemoveTransaction(OtherCoinJoinsPath, txid);
                                 // The previous block's checkpoint must not restore the line just removed.
                                 ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height - 1, OutputPaths);
+                                pendingBlocks = 0;
+                                commitWatch.Restart();
                             }
                         }
                     }
@@ -407,7 +417,7 @@ namespace Dumplings.Scanning
                     }
                 }
 
-                // Detections first, then the checkpoint and the height: a process killed
+                // Detections first, then (per batch) the checkpoint and the height: a process killed
                 // in between leaves extra bytes that the next resume cuts off before re-scanning.
                 ScanCheckpoint.Append(Wasabi2CoinJoinsPath, wasabi2CoinJoins.Select(x => RpcParser.ToLine(x)));
                 ScanCheckpoint.Append(WasabiCoinJoinsPath, wasabiCoinJoins.Select(x => RpcParser.ToLine(x)));
@@ -418,9 +428,20 @@ namespace Dumplings.Scanning
                 ScanCheckpoint.Append(WasabiPostMixTxsPath, wasabiPostMixTxs.Select(x => RpcParser.ToLine(x)));
                 ScanCheckpoint.Append(SamouraiPostMixTxsPath, samouraiPostMixTxs.Select(x => RpcParser.ToLine(x)));
                 ScanCheckpoint.Append(OtherCoinJoinPostMixTxsPath, otherCoinJoinPostMixTxs.Select(x => RpcParser.ToLine(x)));
-                ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height, OutputPaths);
+                if (++pendingBlocks >= CommitEveryBlocks || commitWatch.Elapsed >= CommitInterval)
+                {
+                    ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height, OutputPaths);
+                    pendingBlocks = 0;
+                    commitWatch.Restart();
+                }
 
                 height++;
+            }
+
+            // The tip block is left unsaved by design; everything before it is committed now.
+            if (pendingBlocks > 0)
+            {
+                ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height - 1, OutputPaths);
             }
         }
 
