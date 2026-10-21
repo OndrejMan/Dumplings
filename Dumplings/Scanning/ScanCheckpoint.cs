@@ -34,6 +34,19 @@ namespace Dumplings.Scanning
             }
         }
 
+        /// <summary>Replaces a file so that readers see either the old or the new content.</summary>
+        public static void WriteAtomically(string path, string content)
+        {
+            var temporary = path + ".tmp";
+            using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                var bytes = new UTF8Encoding(false).GetBytes(content);
+                stream.Write(bytes, 0, bytes.Length);
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(temporary, path, overwrite: true);
+        }
+
         /// <summary>Removes the line of one transaction without loading the whole file into memory.</summary>
         public static void RemoveTransaction(string path, uint256 txid)
         {

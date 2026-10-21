@@ -52,5 +52,17 @@ namespace Dumplings.Tests
             Assert.Equal(Line(TxA) + "\n" + Line(TxC) + "\n", File.ReadAllText(coinjoins));
             Assert.False(File.Exists(coinjoins + ".tmp"));
         }
+
+        [Fact]
+        public void WriteAtomicallyReplacesTheHeight()
+        {
+            var height = FilePath("LastProcessedBlockHeight.txt");
+            File.WriteAllText(height, "699999");
+
+            ScanCheckpoint.WriteAtomically(height, "700000");
+
+            Assert.Equal("700000", File.ReadAllText(height));
+            Assert.False(File.Exists(height + ".tmp"));
+        }
     }
 }

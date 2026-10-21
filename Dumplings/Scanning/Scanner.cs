@@ -385,7 +385,7 @@ namespace Dumplings.Scanning
                     }
                 }
 
-                File.WriteAllText(LastProcessedBlockHeightPath, height.ToString());
+                ScanCheckpoint.WriteAtomically(LastProcessedBlockHeightPath, height.ToString());
                 File.AppendAllLines(Wasabi2CoinJoinsPath, wasabi2CoinJoins.Select(x => RpcParser.ToLine(x)));
                 File.AppendAllLines(WasabiCoinJoinsPath, wasabiCoinJoins.Select(x => RpcParser.ToLine(x)));
                 File.AppendAllLines(SamouraiCoinJoinsPath, samouraiCoinJoins.Select(x => RpcParser.ToLine(x)));
