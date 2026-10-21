@@ -89,6 +89,24 @@ namespace Dumplings.Tests
         }
 
         [Fact]
+        public void CommitRecordsTheBatchAndRestoreDropsWhatCameAfter()
+        {
+            var coinjoins = FilePath("OtherCoinJoins.txt");
+            var checkpoint = FilePath("Checkpoint.txt");
+            var height = FilePath("LastProcessedBlockHeight.txt");
+            ScanCheckpoint.Append(coinjoins, new[] { Line(TxA) });
+            ScanCheckpoint.Commit(checkpoint, height, 700_099, new[] { coinjoins });
+            var committed = File.ReadAllText(coinjoins);
+
+            // Later blocks of an unfinished batch, then a crash.
+            ScanCheckpoint.Append(coinjoins, new[] { Line(TxB), Line(TxC) });
+
+            Assert.Equal("700099", File.ReadAllText(height));
+            Assert.Equal(700_099UL, ScanCheckpoint.Restore(checkpoint, new[] { coinjoins }));
+            Assert.Equal(committed, File.ReadAllText(coinjoins));
+        }
+
+        [Fact]
         public void RestoreKeepsAFileShortenedByARewrite()
         {
             var coinjoins = FilePath("OtherCoinJoins.txt");
@@ -100,6 +118,25 @@ namespace Dumplings.Tests
             ScanCheckpoint.Restore(checkpoint, new[] { coinjoins });
 
             Assert.Equal(new[] { uint256.Parse(TxC) }, ScanCheckpoint.ReadIds(coinjoins).ToArray());
+        }
+
+        [Fact]
+        public void CrashAfterARewriteKeepsTheBatchCommittedBeforeIt()
+        {
+            var coinjoins = FilePath("OtherCoinJoins.txt");
+            var checkpoint = FilePath("Checkpoint.txt");
+            var height = FilePath("LastProcessedBlockHeight.txt");
+            ScanCheckpoint.Append(coinjoins, new[] { Line(TxA), Line(TxB) });
+            ScanCheckpoint.Commit(checkpoint, height, 700_000, new[] { coinjoins });
+            // Later blocks of an unfinished batch.
+            ScanCheckpoint.Append(coinjoins, new[] { Line(TxC) });
+
+            // The scanner's order for a false positive, with a crash before the second commit.
+            ScanCheckpoint.Commit(checkpoint, height, 700_099, new[] { coinjoins });
+            ScanCheckpoint.RemoveTransaction(coinjoins, uint256.Parse(TxA));
+
+            Assert.Equal(700_099UL, ScanCheckpoint.Restore(checkpoint, new[] { coinjoins }));
+            Assert.Equal(Line(TxB) + "\n" + Line(TxC) + "\n", File.ReadAllText(coinjoins));
         }
 
         [Fact]
