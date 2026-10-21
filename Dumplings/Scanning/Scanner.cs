@@ -36,6 +36,20 @@ namespace Dumplings.Scanning
         public static readonly string WasabiPostMixTxsPath = Path.Combine(WorkFolder, "WasabiPostMixTxs.txt");
         public static readonly string SamouraiPostMixTxsPath = Path.Combine(WorkFolder, "SamouraiPostMixTxs.txt");
         public static readonly string OtherCoinJoinPostMixTxsPath = Path.Combine(WorkFolder, "OtherCoinJoinPostMixTxs.txt");
+        public static readonly string CheckpointPath = Path.Combine(WorkFolder, "Checkpoint.txt");
+
+        private static readonly string[] OutputPaths =
+        {
+            Wasabi2CoinJoinsPath,
+            WasabiCoinJoinsPath,
+            SamouraiCoinJoinsPath,
+            SamouraiTx0sPath,
+            OtherCoinJoinsPath,
+            Wasabi2PostMixTxsPath,
+            WasabiPostMixTxsPath,
+            SamouraiPostMixTxsPath,
+            OtherCoinJoinPostMixTxsPath
+        };
 
         public RPCClient Rpc { get; }
 
@@ -112,9 +126,11 @@ namespace Dumplings.Scanning
 
             ulong startingHeight = Constants.FirstJoinMarketBlock; 
             ulong height = startingHeight;
-            if (File.Exists(LastProcessedBlockHeightPath))
+            if (File.Exists(LastProcessedBlockHeightPath) || File.Exists(CheckpointPath))
             {
-                height = ReadBestHeight() + 1;
+                var checkpointHeight = ScanCheckpoint.Restore(CheckpointPath, OutputPaths);
+                ScanCheckpoint.WriteAtomically(LastProcessedBlockHeightPath, checkpointHeight.ToString());
+                height = checkpointHeight + 1;
                 // Only the ids are needed; reading whole lines would hold every input and output in memory.
                 allSamouraiCoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(SamouraiCoinJoinsPath));
                 allWasabi2CoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(Wasabi2CoinJoinsPath));
@@ -122,6 +138,10 @@ namespace Dumplings.Scanning
                 allOtherCoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(OtherCoinJoinsPath));
                 allSamouraiTx0Set = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(SamouraiTx0sPath));
                 Logger.LogWarning($"{height - startingHeight + 1} blocks already processed. Continue scanning...");
+            }
+            else
+            {
+                ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height - 1, OutputPaths);
             }
 
             var bestHeight = (ulong)await Rpc.GetBlockCountAsync().ConfigureAwait(false);
@@ -348,6 +368,8 @@ namespace Dumplings.Scanning
                             else
                             {
                                 ScanCheckpoint.RemoveTransaction(OtherCoinJoinsPath, txid);
+                                // The previous block's checkpoint must not restore the line just removed.
+                                ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height - 1, OutputPaths);
                             }
                         }
                     }
@@ -385,16 +407,18 @@ namespace Dumplings.Scanning
                     }
                 }
 
-                ScanCheckpoint.WriteAtomically(LastProcessedBlockHeightPath, height.ToString());
-                File.AppendAllLines(Wasabi2CoinJoinsPath, wasabi2CoinJoins.Select(x => RpcParser.ToLine(x)));
-                File.AppendAllLines(WasabiCoinJoinsPath, wasabiCoinJoins.Select(x => RpcParser.ToLine(x)));
-                File.AppendAllLines(SamouraiCoinJoinsPath, samouraiCoinJoins.Select(x => RpcParser.ToLine(x)));
-                File.AppendAllLines(SamouraiTx0sPath, samouraiTx0s.Select(x => RpcParser.ToLine(x)));
-                File.AppendAllLines(OtherCoinJoinsPath, otherCoinJoins.Select(x => RpcParser.ToLine(x)));
-                File.AppendAllLines(Wasabi2PostMixTxsPath, wasabi2PostMixTxs.Select(x => RpcParser.ToLine(x)));
-                File.AppendAllLines(WasabiPostMixTxsPath, wasabiPostMixTxs.Select(x => RpcParser.ToLine(x)));
-                File.AppendAllLines(SamouraiPostMixTxsPath, samouraiPostMixTxs.Select(x => RpcParser.ToLine(x)));
-                File.AppendAllLines(OtherCoinJoinPostMixTxsPath, otherCoinJoinPostMixTxs.Select(x => RpcParser.ToLine(x)));
+                // Detections first, then the checkpoint and the height: a process killed
+                // in between leaves extra bytes that the next resume cuts off before re-scanning.
+                ScanCheckpoint.Append(Wasabi2CoinJoinsPath, wasabi2CoinJoins.Select(x => RpcParser.ToLine(x)));
+                ScanCheckpoint.Append(WasabiCoinJoinsPath, wasabiCoinJoins.Select(x => RpcParser.ToLine(x)));
+                ScanCheckpoint.Append(SamouraiCoinJoinsPath, samouraiCoinJoins.Select(x => RpcParser.ToLine(x)));
+                ScanCheckpoint.Append(SamouraiTx0sPath, samouraiTx0s.Select(x => RpcParser.ToLine(x)));
+                ScanCheckpoint.Append(OtherCoinJoinsPath, otherCoinJoins.Select(x => RpcParser.ToLine(x)));
+                ScanCheckpoint.Append(Wasabi2PostMixTxsPath, wasabi2PostMixTxs.Select(x => RpcParser.ToLine(x)));
+                ScanCheckpoint.Append(WasabiPostMixTxsPath, wasabiPostMixTxs.Select(x => RpcParser.ToLine(x)));
+                ScanCheckpoint.Append(SamouraiPostMixTxsPath, samouraiPostMixTxs.Select(x => RpcParser.ToLine(x)));
+                ScanCheckpoint.Append(OtherCoinJoinPostMixTxsPath, otherCoinJoinPostMixTxs.Select(x => RpcParser.ToLine(x)));
+                ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height, OutputPaths);
 
                 height++;
             }

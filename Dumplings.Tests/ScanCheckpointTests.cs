@@ -42,6 +42,67 @@ namespace Dumplings.Tests
         }
 
         [Fact]
+        public void InitialCheckpointDiscardsAnInterruptedFirstBatch()
+        {
+            var coinjoins = FilePath("OtherCoinJoins.txt");
+            var postMix = FilePath("OtherCoinJoinPostMixTxs.txt");
+            var checkpoint = FilePath("Checkpoint.txt");
+            var height = FilePath("LastProcessedBlockHeight.txt");
+            var paths = new[] { coinjoins, postMix };
+            var startingHeight = Constants.FirstJoinMarketBlock;
+            ScanCheckpoint.Commit(checkpoint, height, startingHeight - 1, paths);
+
+            ScanCheckpoint.Append(coinjoins, new[] { Line(TxA) });
+            File.AppendAllText(postMix, Line(TxB).Substring(0, 40));
+
+            var restoredHeight = ScanCheckpoint.Restore(checkpoint, paths);
+
+            Assert.Equal(startingHeight - 1, restoredHeight);
+            Assert.Equal((startingHeight - 1).ToString(), File.ReadAllText(height));
+            Assert.Equal(0, new FileInfo(coinjoins).Length);
+            Assert.Equal(0, new FileInfo(postMix).Length);
+
+            ScanCheckpoint.Append(coinjoins, new[] { Line(TxA) });
+            Assert.Equal(new[] { uint256.Parse(TxA) }, ScanCheckpoint.ReadIds(coinjoins).ToArray());
+        }
+
+        [Fact]
+        public void RestoreCutsOffABlockInterruptedAfterTheCheckpoint()
+        {
+            var coinjoins = FilePath("OtherCoinJoins.txt");
+            var postMix = FilePath("OtherCoinJoinPostMixTxs.txt");
+            var checkpoint = FilePath("Checkpoint.txt");
+            ScanCheckpoint.Append(coinjoins, new[] { Line(TxA) });
+            ScanCheckpoint.Append(postMix, Array.Empty<string>());
+            ScanCheckpoint.WriteCheckpoint(checkpoint, 700_000, new[] { coinjoins, postMix });
+            var recorded = File.ReadAllText(coinjoins);
+
+            // The next block got as far as a full and a torn line before the process died.
+            ScanCheckpoint.Append(coinjoins, new[] { Line(TxC) });
+            File.AppendAllText(postMix, Line(TxB).Substring(0, 40));
+
+            var height = ScanCheckpoint.Restore(checkpoint, new[] { coinjoins, postMix });
+
+            Assert.Equal(700_000UL, height);
+            Assert.Equal(recorded, File.ReadAllText(coinjoins));
+            Assert.Equal(0, new FileInfo(postMix).Length);
+        }
+
+        [Fact]
+        public void RestoreKeepsAFileShortenedByARewrite()
+        {
+            var coinjoins = FilePath("OtherCoinJoins.txt");
+            var checkpoint = FilePath("Checkpoint.txt");
+            ScanCheckpoint.Append(coinjoins, new[] { Line(TxA), Line(TxC) });
+            ScanCheckpoint.WriteCheckpoint(checkpoint, 700_000, new[] { coinjoins });
+
+            ScanCheckpoint.RemoveTransaction(coinjoins, uint256.Parse(TxA));
+            ScanCheckpoint.Restore(checkpoint, new[] { coinjoins });
+
+            Assert.Equal(new[] { uint256.Parse(TxC) }, ScanCheckpoint.ReadIds(coinjoins).ToArray());
+        }
+
+        [Fact]
         public void RemoveTransactionRemovesOnlyTheGivenTransaction()
         {
             var coinjoins = FilePath("OtherCoinJoins.txt");
