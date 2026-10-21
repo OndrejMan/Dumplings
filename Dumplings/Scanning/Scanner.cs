@@ -115,11 +115,12 @@ namespace Dumplings.Scanning
             if (File.Exists(LastProcessedBlockHeightPath))
             {
                 height = ReadBestHeight() + 1;
-                allSamouraiCoinJoinSet = Enumerable.ToHashSet(ReadSamouraiCoinJoins().Select(x => x.Id));
-                allWasabi2CoinJoinSet = Enumerable.ToHashSet(ReadWasabi2CoinJoins().Select(x => x.Id));
-                allWasabiCoinJoinSet = Enumerable.ToHashSet(ReadWasabiCoinJoins().Select(x => x.Id));
-                allOtherCoinJoinSet = Enumerable.ToHashSet(ReadOtherCoinJoins().Select(x => x.Id));
-                allSamouraiTx0Set = Enumerable.ToHashSet(ReadSamouraiTx0s().Select(x => x.Id));
+                // Only the ids are needed; reading whole lines would hold every input and output in memory.
+                allSamouraiCoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(SamouraiCoinJoinsPath));
+                allWasabi2CoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(Wasabi2CoinJoinsPath));
+                allWasabiCoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(WasabiCoinJoinsPath));
+                allOtherCoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(OtherCoinJoinsPath));
+                allSamouraiTx0Set = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(SamouraiTx0sPath));
                 Logger.LogWarning($"{height - startingHeight + 1} blocks already processed. Continue scanning...");
             }
 
@@ -346,8 +347,7 @@ namespace Dumplings.Scanning
                             }
                             else
                             {
-                                var allOtherCoinJoins = ReadOtherCoinJoins().Where(x => x.Id != txid);
-                                File.WriteAllLines(OtherCoinJoinsPath, allOtherCoinJoins.Select(x => RpcParser.ToLine(x)));
+                                ScanCheckpoint.RemoveTransaction(OtherCoinJoinsPath, txid);
                             }
                         }
                     }
