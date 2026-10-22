@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+# CI_RUNNER is a JSON runner-label array, for example ["self-hosted"]. Leave it unset to
+# use GitHub-hosted Ubuntu. Pull requests from forks always run GitHub-hosted, so code
+# from outside the repository never runs on the self-hosted machine.
+jobs:
+  lint:
+    name: Format and analyzers
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNNER || '"ubuntu-latest"') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Dumplings and Dumplings.Tests target net6.0, Dumplings.Cli targets net8.0.
+      # global.json keeps the SDK on 8.0 even when the shared tool cache holds a newer one.
+      # The Linux default /usr/share/dotnet is not writable for a non-root self-hosted runner.
+      - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
+        with:
+          dotnet-version: |
+            6.0.x
+            8.0.x
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - run: dotnet restore Dumplings.sln
+
+      # Whitespace, code style and analyzer diagnostics in one pass.
+      - run: dotnet format Dumplings.sln --no-restore --verify-no-changes --verbosity diagnostic
+
+  build-test:
+    name: Build and test
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNNER || '"ubuntu-latest"') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The Linux default /usr/share/dotnet is not writable for a non-root self-hosted runner.
+      - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
+        with:
+          dotnet-version: |
+            6.0.x
+            8.0.x
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - run: dotnet restore Dumplings.sln
+
+      # Restore runs separately so NuGet audit warnings do not fail the build; the
+      # vulnerable-packages job reports them instead.
+      - run: dotnet build Dumplings.sln --configuration Release --no-restore -p:TreatWarningsAsErrors=true
+
+      - run: >
+          dotnet test Dumplings.sln
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --logger "console;verbosity=normal"
+          --collect "XPlat Code Coverage"
+          --results-directory TestResults
+
+      - name: Summarize test results
+        if: always()
+        run: |
+          shopt -s globstar nullglob
+          for trx in TestResults/**/*.trx; do
+            counters=$(grep -o '<Counters [^>]*>' "$trx" | head -1)
+            total=$(sed -n 's/.* total="\([0-9]*\)".*/\1/p' <<<"$counters")
+            passed=$(sed -n 's/.* passed="\([0-9]*\)".*/\1/p' <<<"$counters")
+            failed=$(sed -n 's/.* failed="\([0-9]*\)".*/\1/p' <<<"$counters")
+            echo "### Tests: ${passed}/${total} passed, ${failed} failed" >>"$GITHUB_STEP_SUMMARY"
+          done
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: ignore
+
+  vulnerable-packages:
+    name: Vulnerable NuGet packages
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNNER || '"ubuntu-latest"') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The Linux default /usr/share/dotnet is not writable for a non-root self-hosted runner.
+      - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
+        with:
+          dotnet-version: |
+            6.0.x
+            8.0.x
+
+      - run: dotnet restore Dumplings.sln
+
+      # Reported as warnings, not failures: the known findings are transitive
+      # (Newtonsoft.Json via NBitcoin) and would keep CI red regardless of the change.
+      - name: List vulnerable packages
+        run: |
+          set -o pipefail
+          dotnet list Dumplings.sln package --vulnerable --include-transitive | tee vulnerable.txt
+          grep -E '^\s*>' vulnerable.txt | awk '{print $2, $3, $4, $5}' | sort -u | while read -r name version severity url; do
+            echo "::warning title=Vulnerable package::${name} ${version} (${severity}) ${url}"
+          done || true
