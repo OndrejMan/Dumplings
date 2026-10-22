@@ -75,7 +75,7 @@ namespace Dumplings
        
         };
 
-	 public static readonly uint256[] AshigaruSeedTxIds = new[]  
+        public static readonly uint256[] AshigaruSeedTxIds = new[]
         {
             // 0.025 BTC pool genesis / very first mix
             uint256.Parse("737a867727db9a2c981ad622f2fa14b021ce8b1066a001e34fb793f8da833155"),
