@@ -95,12 +95,14 @@ namespace Dumplings.Scanning
                 && (mostFrequentEqualOutputCount == outputCount - mostFrequentEqualOutputCount || mostFrequentEqualOutputCount == outputCount - mostFrequentEqualOutputCount + 1) // Rarely it isn't, but it helps filtering out false positives. +1 condition is for case when taker make sweep tx with no change
                 && outputs.Select(x => x.ScriptPubKey).Distinct().Count() >= mostFrequentEqualOutputCount // Otherwise more participants would be single actors which makes no sense.
                 && inputs.Select(x => x.ScriptPubKey).Distinct().Count() >= mostFrequentEqualOutputCount // Otherwise more participants would be single actors which makes no sense.
+
                 // No single input may exceed what one participant can take out (equal output + largest change)
                 // plus an allowance for fees. The allowance must be positive: in JoinMarket the taker pays the
                 // mining fee and the makers' fees, and makers earn, so the participant holding the largest input
                 // is routinely also the one with the largest change. The former "- 0.0001 BTC" margin assumed
                 // every participant pays a coordinator and rejected most such transactions.
                 && (inputValues.Max() <= mostFrequentEqualOutputValue + outputValues.Where(x => x != mostFrequentEqualOutputValue).Max() + OtherCoinJoinFeeAllowance(mostFrequentEqualOutputValue) // Shortcut instead of an expensive subset sum.
+
                     // Graph evidence: a tx that already passed every structural rule above and spends outputs of several
                     // known JoinMarket-like coinjoins is a remix, even when its taker paid unusually high fees. Only
                     // replaces the max-input bound; the structural rules stay mandatory. Same lookup as the post-mix check.
@@ -126,7 +128,7 @@ namespace Dumplings.Scanning
 
             var opreturnTransactionCache = new MemoryCache(new MemoryCacheOptions() { SizeLimit = 100000 });
 
-            ulong startingHeight = Constants.FirstJoinMarketBlock; 
+            ulong startingHeight = Constants.FirstJoinMarketBlock;
             ulong height = startingHeight;
             if (File.Exists(LastProcessedBlockHeightPath) || File.Exists(CheckpointPath))
             {
@@ -203,7 +205,7 @@ namespace Dumplings.Scanning
                             {
                                 isWasabi2Cj =
                                     tx.Inputs.All(x => x.PrevOutput.ScriptPubKey.IsScriptType(ScriptType.P2WPKH) || x.PrevOutput.ScriptPubKey.IsScriptType(ScriptType.Taproot))
-                                    && inputCount >= Constants.MinWW2Inputs 
+                                    && inputCount >= Constants.MinWW2Inputs
                                     && inputValues.SequenceEqual(inputValues.OrderByDescending(x => x)) // Inputs are ordered descending.
                                     && outputValues.SequenceEqual(outputValues.OrderByDescending(x => x)) // Outputs are ordered descending.
                                     && outputValues.Count(x => Wasabi2Denominations.Contains(x.Satoshi)) > outputCount * 0.8; // Most of the outputs contains the denomination.
@@ -222,7 +224,7 @@ namespace Dumplings.Scanning
                                     var uniqueOutputCount = tx.GetIndistinguishableOutputs(includeSingle: true).Count(x => x.count == 1);
                                     isWasabiCj =
                                         isNativeSegwitOnly
-                                        && mostFrequentEqualOutputCount >= Constants.MinWW2EqualOutputs 
+                                        && mostFrequentEqualOutputCount >= Constants.MinWW2EqualOutputs
                                         && inputCount >= mostFrequentEqualOutputCount // More inptuts than most frequent equal outputs.
                                         && mostFrequentEqualOutputValue.Almost(Constants.ApproximateWasabiBaseDenomination, Constants.WasabiBaseDenominationPrecision) // The most frequent equal outputs must be almost the base denomination.
                                         && uniqueOutputCount >= 2; // It's very likely there's at least one change and at least one coord output those have unique values.
