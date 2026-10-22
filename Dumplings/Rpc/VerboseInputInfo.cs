@@ -51,7 +51,8 @@ namespace Dumplings.Rpc
             var po = parts[2] is null ? null : VerboseOutputInfo.FromString(parts[2]);
 
             var seq = 0u;
-            if (parts.Length > 3 && parts[3] is null) {
+            if (parts.Length > 3 && parts[3] is null)
+            {
                 seq = uint.Parse(parts[3]);
             }
 
