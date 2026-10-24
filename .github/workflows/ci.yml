@@ -114,6 +114,9 @@ jobs:
       - name: Check service entrypoint syntax
         run: bash -n docker-entrypoint.sh
 
+      - name: Test service credential handling without Core or S3
+        run: python3 -m unittest discover -s tests -p test_service_credentials.py
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Build Linux amd64 service image

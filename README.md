@@ -29,6 +29,8 @@ working directory is `/data`; mount persistent storage there to retain
 |---|---|
 | `BITCOIN_RPC_COOKIE` | Core cookie file, `/bitcoin/.cookie` |
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | S3 credentials; standard `AWS_*` credentials also work |
+| `S3_CREDENTIALS_FILE` | Optional readable credentials file inside the container; takes precedence over environment keys |
+| `S3_PROFILE` | Profile in that file, `coinjoin` by default |
 | `S3_ENDPOINT_URL` | Optional S3-compatible endpoint |
 | `DUMPLINGS_S3_DESTINATION` | Required destination, e.g. `s3://bucket/dumplings` |
 | `DUMPLINGS_INTERVAL` | Seconds between successful passes, `86400`; `0` runs once |
@@ -38,6 +40,14 @@ The service reaches Core at `127.0.0.1:8332`; share Core's container network
 namespace and mount its datadir read-only for cookie access. The image does
 not start Core. The archive repository supplies this Compose configuration:
 [deployment guide](https://github.com/OndrejMan/bitcoin-block-archive/tree/main/dumplings).
+
+With a credentials file, mount it read-only and set `S3_CREDENTIALS_FILE` to
+its container path, for example `/run/secrets/s3-credentials`. A mode-600 file
+must be owned by the UID used to run the container. In the archive Compose
+deployment, `S3_CREDENTIALS_SOURCE` selects the host path and sets this mount
+automatically. Environment key pairs remain supported; s5cmd's profile flag
+is omitted in that mode so those keys are used. A profile without environment
+keys can still select the SDK's default credentials file.
 
 `/app/COMMIT` records the source commit and can be inspected without a scan:
 

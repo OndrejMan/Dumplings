@@ -22,13 +22,28 @@ hash_window=${HASH_WINDOW:-2016}
 scanner=/data/Scanner
 commit=$(cat /app/COMMIT)
 
-# Same secrets as the archiver; s5cmd reads them as AWS_* from the environment.
-if [ -n "${S3_ACCESS_KEY_ID:-}" ]; then
+credentials_file=${S3_CREDENTIALS_FILE:-}
+if [ -n "$credentials_file" ]; then
+    if [ ! -f "$credentials_file" ] || [ ! -r "$credentials_file" ]; then
+        echo "S3_CREDENTIALS_FILE must name a readable regular file" >&2
+        exit 2
+    fi
+elif [ -n "${S3_ACCESS_KEY_ID:-}" ]; then
+    # Without a mounted file, s5cmd reads AWS_* credentials from the environment.
     export AWS_ACCESS_KEY_ID=$S3_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:?}
 fi
 
 s5() {
-    s5cmd ${S3_ENDPOINT_URL:+--endpoint-url "$S3_ENDPOINT_URL"} ${S3_PROFILE:+--profile "$S3_PROFILE"} "$@"
+    local options=()
+    if [ -n "$credentials_file" ]; then
+        options+=(--credentials-file "$credentials_file" --profile "${S3_PROFILE:-coinjoin}")
+    elif [ -n "${S3_PROFILE:-}" ] && [ -z "${AWS_ACCESS_KEY_ID:-}" ] && [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+        options+=(--profile "$S3_PROFILE")
+    fi
+    if [ -n "${S3_ENDPOINT_URL:-}" ]; then
+        options+=(--endpoint-url "$S3_ENDPOINT_URL")
+    fi
+    s5cmd "${options[@]}" "$@"
 }
 
 rpc() {
