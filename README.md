@@ -9,6 +9,59 @@
 1. `cd Dumplings/Dumplings.Cli`
 1. `dotnet run -- sync --rpcuser=user --rpcpassword=password`
 
+# Container image
+
+This repository builds and publishes the complete service image
+`ghcr.io/ondrejman/dumplings`: the CLI, .NET runtime, daily scheduler and S3
+publisher. CI validates an amd64 image after the format, analyzer and unit-test
+jobs pass. Pushes to `master`, `v*` tags and manual runs also publish amd64/arm64
+images. Tags include `latest` on the default branch, `sha-<full-commit>` and
+versions for version tags.
+
+The default entrypoint, `docker-entrypoint.sh`, waits for Bitcoin Core and its
+optional txindex, runs `dumplings sync`, publishes the Scanner snapshot and
+canonical block hashes to S3, then waits until the next pass. A failed scan
+retries after ten minutes without publishing a new Scanner snapshot. The
+working directory is `/data`; mount persistent storage there to retain
+`Scanner/`. Configure these service variables:
+
+| Variable | Purpose / default |
+|---|---|
+| `BITCOIN_RPC_COOKIE` | Core cookie file, `/bitcoin/.cookie` |
+| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | S3 credentials; standard `AWS_*` credentials also work |
+| `S3_ENDPOINT_URL` | Optional S3-compatible endpoint |
+| `DUMPLINGS_S3_DESTINATION` | Required destination, e.g. `s3://bucket/dumplings` |
+| `DUMPLINGS_INTERVAL` | Seconds between successful passes, `86400`; `0` runs once |
+| `DUMPLINGS_RETRY` | Seconds before retrying a failed scan, `600` |
+
+The service reaches Core at `127.0.0.1:8332`; share Core's container network
+namespace and mount its datadir read-only for cookie access. The image does
+not start Core. The archive repository supplies this Compose configuration:
+[deployment guide](https://github.com/OndrejMan/bitcoin-block-archive/tree/main/dumplings).
+
+`/app/COMMIT` records the source commit and can be inspected without a scan:
+
+```bash
+docker run --rm --entrypoint cat ghcr.io/ondrejman/dumplings:latest /app/COMMIT
+```
+
+For a local build, supply its source revision:
+
+```bash
+docker build --build-arg DUMPLINGS_COMMIT="$(git rev-parse HEAD)" -t dumplings:local .
+```
+
+To run a CLI command directly, override the service entrypoint with
+`--entrypoint dotnet` and pass `/app/Dumplings.Cli.dll` followed by the usual
+CLI arguments, with the same data mounts and Core RPC access.
+
+After a successful publication, update the running service from the archive
+checkout with `docker compose --profile dumplings pull dumplings` followed by
+`docker compose --profile dumplings up -d --no-deps dumplings`. The GHCR
+package must be public, or the VM's Docker must be logged in with read access.
+No archive image rebuild or second CI run is required. If the VM's `.env`
+already sets `DUMPLINGS_IMAGE`, use `ghcr.io/ondrejman/dumplings:latest`.
+
 # Usage
 
 1. Run Bitcoin, wait until it's synchronized.
