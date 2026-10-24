@@ -3,7 +3,7 @@
 1. Get Git: https://git-scm.com/downloads
 1. Get .NET Core SDK: https://www.microsoft.com/net/download
 1. Get Bitcoin Core: https://bitcoincore.org/ or Bitcoin Knots: https://bitcoinknots.org/
-1. Enable Core RPC with `server = 1` and `txindex = 1`. Authenticate with its cookie or configured RPC credentials.
+1. Enable Core RPC with `server = 1`. Authenticate with its cookie or configured RPC credentials. A txindex is optional; scans without it retain `Scanner/Tx0Candidates.txt` for later parent lookups. Keep the full history for the initial scan and retain the complete Scanner recovery state before pruning.
 1. Run Bitcoin and wait until it's synchronized.
 1. `git clone https://github.com/OndrejMan/Dumplings.git`
 1. `cd Dumplings/Dumplings.Cli`

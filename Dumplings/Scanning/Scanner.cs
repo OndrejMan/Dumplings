@@ -36,6 +36,7 @@ namespace Dumplings.Scanning
         public static readonly string WasabiPostMixTxsPath = Path.Combine(WorkFolder, "WasabiPostMixTxs.txt");
         public static readonly string SamouraiPostMixTxsPath = Path.Combine(WorkFolder, "SamouraiPostMixTxs.txt");
         public static readonly string OtherCoinJoinPostMixTxsPath = Path.Combine(WorkFolder, "OtherCoinJoinPostMixTxs.txt");
+        public static readonly string Tx0CandidatesPath = Path.Combine(WorkFolder, "Tx0Candidates.txt");
         public static readonly string CheckpointPath = Path.Combine(WorkFolder, "Checkpoint.txt");
         private const int CommitEveryBlocks = 100;
         private static readonly TimeSpan CommitInterval = TimeSpan.FromSeconds(60);
@@ -50,10 +51,13 @@ namespace Dumplings.Scanning
             Wasabi2PostMixTxsPath,
             WasabiPostMixTxsPath,
             SamouraiPostMixTxsPath,
-            OtherCoinJoinPostMixTxsPath
+            OtherCoinJoinPostMixTxsPath,
+            Tx0CandidatesPath
         };
 
         public RPCClient Rpc { get; }
+
+        private bool? TxIndex { get; set; }
 
         private decimal PercentageDone { get; set; } = 0;
         private decimal PreviousPercentageDone { get; set; } = -1;
@@ -147,6 +151,8 @@ namespace Dumplings.Scanning
             {
                 ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height - 1, OutputPaths);
             }
+            var tx0Candidates = new Tx0CandidateStore(Tx0CandidatesPath);
+            Logger.LogInfo($"{tx0Candidates.Count} stored tx0 candidates.");
 
             var bestHeight = (ulong)await Rpc.GetBlockCountAsync().ConfigureAwait(false);
 
@@ -174,12 +180,17 @@ namespace Dumplings.Scanning
                 var wasabi2PostMixTxs = new List<VerboseTransactionInfo>();
                 var samouraiPostMixTxs = new List<VerboseTransactionInfo>();
                 var otherCoinJoinPostMixTxs = new List<VerboseTransactionInfo>();
+                var blockTx0Candidates = new List<VerboseTransactionInfo>();
 
                 foreach (var tx in block.Transactions)
                 {
                     if (tx.Outputs.Count() > 2 && tx.Outputs.Any(x => TxNullDataTemplate.Instance.CheckScriptPubKey(x.ScriptPubKey)))
                     {
                         opreturnTransactionCache.Set(tx.Id, tx, new MemoryCacheEntryOptions().SetSize(1));
+                    }
+                    if (block.Height >= Constants.FirstSamouraiBlock && Tx0CandidateStore.IsCandidate(tx))
+                    {
+                        blockTx0Candidates.Add(tx);
                     }
 
                     bool isWasabiCj = false;
@@ -334,8 +345,16 @@ namespace Dumplings.Scanning
 
                 foreach (var txid in samouraiCoinJoins.SelectMany(x => x.Inputs).Select(x => x.OutPoint.Hash).Where(x => !allSamouraiCoinJoinSet.Contains(x) && !allSamouraiTx0Set.Contains(x)).Distinct())
                 {
-                    if (!opreturnTransactionCache.TryGetValue(txid, out VerboseTransactionInfo vtxi))
+                    if (!opreturnTransactionCache.TryGetValue(txid, out VerboseTransactionInfo vtxi)
+                        && !tx0Candidates.TryGet(txid, out vtxi))
                     {
+                        if (!await HasTxIndexAsync().ConfigureAwait(false))
+                        {
+                            // Without txindex a parent that is no stored candidate cannot be fetched; it is no tx0 either.
+                            Logger.LogWarning($"Parent {txid} of a Samourai coinjoin in block {height} is not a stored tx0 candidate; not recorded as a tx0.");
+                            continue;
+                        }
+
                         var tx0 = await Rpc.GetSmartRawTransactionInfoAsync(txid).ConfigureAwait(false);
                         var verboseOutputs = new List<VerboseOutputInfo>(tx0.Transaction.Outputs.Count);
                         foreach (var o in tx0.Transaction.Outputs)
@@ -430,6 +449,7 @@ namespace Dumplings.Scanning
                 ScanCheckpoint.Append(WasabiPostMixTxsPath, wasabiPostMixTxs.Select(x => RpcParser.ToLine(x)));
                 ScanCheckpoint.Append(SamouraiPostMixTxsPath, samouraiPostMixTxs.Select(x => RpcParser.ToLine(x)));
                 ScanCheckpoint.Append(OtherCoinJoinPostMixTxsPath, otherCoinJoinPostMixTxs.Select(x => RpcParser.ToLine(x)));
+                tx0Candidates.Append(blockTx0Candidates);
                 if (++pendingBlocks >= CommitEveryBlocks || commitWatch.Elapsed >= CommitInterval)
                 {
                     ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height, OutputPaths);
@@ -445,6 +465,17 @@ namespace Dumplings.Scanning
             {
                 ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height - 1, OutputPaths);
             }
+        }
+
+        /// <summary>A pruned node has no txindex, so `getrawtransaction` only finds mempool transactions.</summary>
+        private async Task<bool> HasTxIndexAsync()
+        {
+            if (TxIndex is null)
+            {
+                var response = await Rpc.SendCommandAsync("getindexinfo", "txindex").ConfigureAwait(false);
+                TxIndex = response.Result["txindex"] is { };
+            }
+            return TxIndex.Value;
         }
 
         private static IEnumerable<VerboseTransactionInfo> ReadWasabi2CoinJoins()
