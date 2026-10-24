@@ -24,6 +24,15 @@ namespace Dumplings.Tests
         }
 
         [Fact]
+        public void InputSequenceSurvivesARoundTrip()
+        {
+            var serialized = "7732a03c8cf133e0475ae37e4f2f49ba77beb631378216889e33e9847aa0049b:::0000000000000000002dddc28874e5a9b2b8c285a09af36d094d91045bb054ae:::1232:::1530763257:::52d47c5f7f1f10346a299a915df44b644386f46eb8df809cbe5ce3ab95ad0618-6-100000000+0014aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa+TxWitnessV0Keyhash-4294967293:::83240446+0014aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa+TxWitnessV0Keyhash";
+            var deserialized = RpcParser.VerboseTransactionInfoFromLine(serialized);
+            Assert.Equal(4294967293u, Assert.Single(deserialized.Inputs).Sequence);
+            Assert.Equal(serialized, RpcParser.ToLine(deserialized));
+        }
+
+        [Fact]
         public void CanDeserializeCoin()
         {
             var serialized = "636663670340000000::967a9f5f199bc4bfe760be6dbdc4a36f066ede3d01d5ce1dc1955471e19e18fd::1::OP_HASH160 5dbb460b40f627d6afabe63a07df91f384352690 OP_EQUAL::0.99997655";
