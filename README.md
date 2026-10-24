@@ -23,7 +23,11 @@ optional txindex, runs `dumplings sync`, publishes the Scanner snapshot and
 canonical block hashes to S3, then waits until the next pass. A failed scan
 retries after ten minutes without publishing a new Scanner snapshot. The
 working directory is `/data`; mount persistent storage there to retain
-`Scanner/`. Configure these service variables:
+`Scanner/`. New snapshots include `Tx0Candidates.txt`, which is needed to
+resume scanning on a pruned node. Existing snapshots are not backfilled;
+the next snapshot is published when the scanned height advances.
+
+Configure these service variables:
 
 | Variable | Purpose / default |
 |---|---|

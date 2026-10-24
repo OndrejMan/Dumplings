@@ -88,8 +88,8 @@ publish() {
     if [ "$current" = "$destination/$height" ]; then
         return
     fi
-    # Tx0Candidates.txt only serves the scan itself and would bloat every download.
-    s5 cp --exclude 'Tx0Candidates.txt' "$scanner/*" "$destination/$height/" >/dev/null
+    # Include tx0 candidates so a restored scanner can resume on a pruned node.
+    s5 cp "$scanner/*" "$destination/$height/" >/dev/null
     jq -n --arg prefix "$destination/$height" --arg previous "$current" --argjson height "$height" \
         --arg commit "$commit" --arg uploaded "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{last_processed_height: $height, prefix: $prefix, previous: $previous, dumplings_commit: $commit, uploaded_at: $uploaded}' \
