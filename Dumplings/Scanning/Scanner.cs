@@ -37,6 +37,13 @@ namespace Dumplings.Scanning
         public static readonly string SamouraiPostMixTxsPath = Path.Combine(WorkFolder, "SamouraiPostMixTxs.txt");
         public static readonly string OtherCoinJoinPostMixTxsPath = Path.Combine(WorkFolder, "OtherCoinJoinPostMixTxs.txt");
         public static readonly string Tx0CandidatesPath = Path.Combine(WorkFolder, "Tx0Candidates.txt");
+
+        /// <summary>
+        /// One line per tx0 the candidate rule failed: "&lt;height&gt; &lt;txid&gt; not-candidate" for a tx0 that does not match
+        /// <see cref="Tx0CandidateStore.IsCandidate"/>, "&lt;height&gt; &lt;txid&gt; unresolved" for one a node without txindex
+        /// could not supply. Empty after a full scan with txindex means pruning loses no tx0.
+        /// </summary>
+        public static readonly string Tx0CandidateMissesPath = Path.Combine(WorkFolder, "Tx0CandidateMisses.txt");
         public static readonly string CheckpointPath = Path.Combine(WorkFolder, "Checkpoint.txt");
         private const int CommitEveryBlocks = 100;
         private static readonly TimeSpan CommitInterval = TimeSpan.FromSeconds(60);
@@ -52,7 +59,8 @@ namespace Dumplings.Scanning
             WasabiPostMixTxsPath,
             SamouraiPostMixTxsPath,
             OtherCoinJoinPostMixTxsPath,
-            Tx0CandidatesPath
+            Tx0CandidatesPath,
+            Tx0CandidateMissesPath
         };
 
         public RPCClient Rpc { get; }
@@ -181,6 +189,7 @@ namespace Dumplings.Scanning
                 var samouraiPostMixTxs = new List<VerboseTransactionInfo>();
                 var otherCoinJoinPostMixTxs = new List<VerboseTransactionInfo>();
                 var blockTx0Candidates = new List<VerboseTransactionInfo>();
+                var tx0CandidateMisses = new List<string>();
 
                 foreach (var tx in block.Transactions)
                 {
@@ -352,6 +361,7 @@ namespace Dumplings.Scanning
                         {
                             // Without txindex a parent that is no stored candidate cannot be fetched; it is no tx0 either.
                             Logger.LogWarning($"Parent {txid} of a Samourai coinjoin in block {height} is not a stored tx0 candidate; not recorded as a tx0.");
+                            tx0CandidateMisses.Add($"{height} {txid} unresolved");
                             continue;
                         }
 
@@ -380,6 +390,12 @@ namespace Dumplings.Scanning
                     {
                         allSamouraiTx0Set.Add(txid);
                         samouraiTx0s.Add(vtxi);
+
+                        if (!Tx0CandidateStore.IsCandidate(vtxi))
+                        {
+                            Logger.LogWarning($"Tx0 {txid} of a Samourai coinjoin in block {height} does not match the tx0 candidate rule.");
+                            tx0CandidateMisses.Add($"{height} {txid} not-candidate");
+                        }
 
                         if (allOtherCoinJoinSet.Contains(txid))
                         {
@@ -450,6 +466,7 @@ namespace Dumplings.Scanning
                 ScanCheckpoint.Append(SamouraiPostMixTxsPath, samouraiPostMixTxs.Select(x => RpcParser.ToLine(x)));
                 ScanCheckpoint.Append(OtherCoinJoinPostMixTxsPath, otherCoinJoinPostMixTxs.Select(x => RpcParser.ToLine(x)));
                 tx0Candidates.Append(blockTx0Candidates);
+                ScanCheckpoint.Append(Tx0CandidateMissesPath, tx0CandidateMisses);
                 if (++pendingBlocks >= CommitEveryBlocks || commitWatch.Elapsed >= CommitInterval)
                 {
                     ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height, OutputPaths);
