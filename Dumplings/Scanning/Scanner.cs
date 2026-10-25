@@ -16,11 +16,11 @@ namespace Dumplings.Scanning
 {
     public class Scanner
     {
-        public Scanner(RPCClient rpc)
+        public Scanner(RPCClient rpc, ulong? frozenHeight = null)
         {
             Rpc = rpc;
             Directory.CreateDirectory(WorkFolder);
-            BitcoinStatus.CheckAsync(rpc).GetAwaiter().GetResult();
+            BitcoinStatus.CheckAsync(rpc, frozenHeight).GetAwaiter().GetResult();
         }
 
         //public const string WorkFolder = @"C:\Users\user\source\repos\Dumplings\Dumplings.Cli\bin\Release\netcoreapp3.1\Scanner";
@@ -140,29 +140,43 @@ namespace Dumplings.Scanning
 
             var opreturnTransactionCache = new MemoryCache(new MemoryCacheOptions() { SizeLimit = 100000 });
 
+            var bestHeight = (ulong)await Rpc.GetBlockCountAsync().ConfigureAwait(false);
             ulong startingHeight = fromHeight ?? Constants.FirstJoinMarketBlock;
-            ulong height = startingHeight;
+            ulong height = includeTip ? NextFrozenScanHeight(startingHeight, bestHeight) : startingHeight;
             if (File.Exists(LastProcessedBlockHeightPath) || File.Exists(CheckpointPath))
             {
                 var checkpointHeight = ScanCheckpoint.Restore(CheckpointPath, OutputPaths);
                 ScanCheckpoint.WriteAtomically(LastProcessedBlockHeightPath, checkpointHeight.ToString());
-                height = checkpointHeight + 1;
+                height = includeTip
+                    ? NextFrozenScanHeight(startingHeight, bestHeight, checkpointHeight)
+                    : checkpointHeight + 1;
                 // Only the ids are needed; reading whole lines would hold every input and output in memory.
                 allSamouraiCoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(SamouraiCoinJoinsPath));
                 allWasabi2CoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(Wasabi2CoinJoinsPath));
                 allWasabiCoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(WasabiCoinJoinsPath));
                 allOtherCoinJoinSet = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(OtherCoinJoinsPath));
                 allSamouraiTx0Set = Enumerable.ToHashSet(ScanCheckpoint.ReadIds(SamouraiTx0sPath));
-                Logger.LogWarning($"{height - startingHeight + 1} blocks already processed. Continue scanning...");
+                Logger.LogWarning($"Checkpoint at {checkpointHeight}. Continue scanning at {height}...");
             }
             else
             {
                 ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height - 1, OutputPaths);
             }
+            if (includeTip && height > bestHeight)
+            {
+                // A bounded historical chain may end before the first supported
+                // CoinJoin. Persist an empty snapshot at its real tip, not at
+                // FirstJoinMarketBlock - 1, and allow the next run to advance it.
+                foreach (var path in OutputPaths)
+                {
+                    ScanCheckpoint.Append(path, Array.Empty<string>());
+                }
+                ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, bestHeight, OutputPaths);
+                Logger.LogInfo($"Frozen scan is complete at {bestHeight}.");
+                return;
+            }
             var tx0Candidates = new Tx0CandidateStore(Tx0CandidatesPath);
             Logger.LogInfo($"{tx0Candidates.Count} stored tx0 candidates.");
-
-            var bestHeight = (ulong)await Rpc.GetBlockCountAsync().ConfigureAwait(false);
 
             Logger.LogInfo($"Last processed block: {height - 1}.");
             ulong totalBlocks = bestHeight - height + 1;
@@ -483,6 +497,16 @@ namespace Dumplings.Scanning
             {
                 ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height - 1, OutputPaths);
             }
+        }
+
+        internal static ulong NextFrozenScanHeight(ulong startingHeight, ulong bestHeight, ulong? checkpointHeight = null)
+        {
+            if (checkpointHeight > bestHeight)
+            {
+                throw new InvalidOperationException("Scanner checkpoint is ahead of the frozen Core tip.");
+            }
+            var first = Math.Min(startingHeight, bestHeight + 1);
+            return checkpointHeight.HasValue ? Math.Max(first, checkpointHeight.Value + 1) : first;
         }
 
         /// <summary>A pruned node has no txindex, so `getrawtransaction` only finds mempool transactions.</summary>
