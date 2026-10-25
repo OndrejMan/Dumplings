@@ -81,11 +81,18 @@ namespace Dumplings.Tests
                             "getnetworkinfo" => JObject.FromObject(new { networkactive = false }),
                             "getblockchaininfo" => JObject.FromObject(new
                             {
-                                chain = "main", blocks = tip, headers = 900000,
-                                bestblockhash = new string('a', 64), difficulty = 1,
-                                mediantime = 1231006505, verificationprogress = 0.01,
-                                initialblockdownload = true, chainwork = new string('0', 64),
-                                size_on_disk = 1, pruned = true, warnings = ""
+                                chain = "main",
+                                blocks = tip,
+                                headers = 900000,
+                                bestblockhash = new string('a', 64),
+                                difficulty = 1,
+                                mediantime = 1231006505,
+                                verificationprogress = 0.01,
+                                initialblockdownload = true,
+                                chainwork = new string('0', 64),
+                                size_on_disk = 1,
+                                pruned = true,
+                                warnings = ""
                             }),
                             _ => throw new InvalidOperationException("Unexpected RPC: " + method)
                         };
