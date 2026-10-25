@@ -3,13 +3,24 @@
 1. Get Git: https://git-scm.com/downloads
 1. Get .NET Core SDK: https://www.microsoft.com/net/download
 1. Get Bitcoin Core: https://bitcoincore.org/ or Bitcoin Knots: https://bitcoinknots.org/
-1. Make sure your bitcoin.conf has the following entries: `txindex = 1`, `server = 1`, `rpcuser = user`, `rpcpassword = password`, `listen = 1`, `rpcworkqueue = 128`
+1. Enable Core RPC with `server = 1`. Authenticate with its cookie or configured RPC credentials. A txindex is optional; scans without it retain `Scanner/Tx0Candidates.txt` for later parent lookups. Keep the full history for the initial scan and retain the complete Scanner recovery state before pruning.
 1. Run Bitcoin and wait until it's synchronized.
-1. `git clone https://github.com/nopara73/Dumplings.git`
+1. `git clone https://github.com/OndrejMan/Dumplings.git`
 1. `cd Dumplings/Dumplings.Cli`
-1. `dotnet run -- sync --rpcuser=user --rpcpassword=password`
+1. `dotnet run -- sync --rpccookiefile="$HOME/.bitcoin/.cookie"`
 
 # Container image
+
+For a coordinated one-shot run, the CLI accepts `--rpcurl=http://127.0.0.1:PORT/`
+alongside `--rpccookiefile=PATH`. Its normal live scan leaves the current tip
+unsaved. Use `--include-tip` only after freezing Core's network activity to
+save detections and the checkpoint through that fixed tip. The PBS worker
+verifies that Core's height/hash did not change during the scan.
+
+An isolated local fixture may use `--network=regtest --startheight=1`.
+Mainnet remains the default; overriding the start height is restricted to
+regtest. These options let the same CLI participate in a real local
+Core/Dumplings/BlockSci integration test without downloading mainnet.
 
 This repository builds and publishes the complete service image
 `ghcr.io/ondrejman/dumplings`: the CLI, .NET runtime, daily scheduler and S3

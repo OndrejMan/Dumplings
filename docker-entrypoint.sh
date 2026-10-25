@@ -109,13 +109,18 @@ while true; do
     if dotnet /app/Dumplings.Cli.dll sync --rpccookiefile="$cookie" </dev/null; then
         height=$(cat "$scanner/LastProcessedBlockHeight.txt")
         echo "sync reached height $height in $(( $(date +%s) - started )) s"
-        # Published with every snapshot; enable pruning only while it stays empty.
-        echo "tx0s missed by the candidate rule: $(wc -l < "$scanner/Tx0CandidateMisses.txt" 2>/dev/null || echo 0)"
-        publish "$height"
-        pause=$interval
+        if [ ! -f "$scanner/Tx0CandidateMisses.txt" ] || [ -s "$scanner/Tx0CandidateMisses.txt" ]; then
+            echo "Dumplings has missing Tx0 coverage evidence or unresolved candidates; refusing publication" >&2
+            [ "$interval" = 0 ] && exit 1
+            pause=$retry
+        else
+            publish "$height"
+            pause=$interval
+        fi
     else
         # Often transient (a new header before its block); try again soon, not a day later.
         echo "sync failed; nothing published, retrying in ${retry}s" >&2
+        [ "$interval" = 0 ] && exit 1
         pause=$retry
     fi
     [ "$interval" = 0 ] && break

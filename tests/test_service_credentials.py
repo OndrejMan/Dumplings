@@ -103,7 +103,8 @@ with open(os.environ["CREDENTIAL_TEST_LOG"], "a") as log:
             S3_ACCESS_KEY_ID="unused-access",
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("sync failed", result.stderr)
         calls = [json.loads(line) for line in self.log.read_text().splitlines()]
         self.assertEqual(
             calls[0]["args"][:4],
@@ -121,7 +122,8 @@ with open(os.environ["CREDENTIAL_TEST_LOG"], "a") as log:
                         f"{prefix}_SECRET_ACCESS_KEY": "dummy-secret",
                     }
                 )
-                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("sync failed", result.stderr)
                 call = json.loads(self.log.read_text().splitlines()[-1])
                 self.assertNotIn("--profile", call["args"])
                 self.assertNotIn("--credentials-file", call["args"])
@@ -131,7 +133,8 @@ with open(os.environ["CREDENTIAL_TEST_LOG"], "a") as log:
     def test_profile_without_environment_keys_keeps_default_file_lookup(self) -> None:
         result = self.run_service()
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("sync failed", result.stderr)
         call = json.loads(self.log.read_text().splitlines()[0])
         self.assertEqual(call["args"][:2], ["--profile", "archive"])
         self.assertNotIn("--credentials-file", call["args"])
@@ -149,3 +152,10 @@ with open(os.environ["CREDENTIAL_TEST_LOG"], "a") as log:
         self.assertEqual(result.returncode, 2)
         self.assertIn("readable regular file", result.stderr)
         self.assertFalse(self.log.exists())
+
+    def test_one_shot_reports_scanner_failure_without_publishing_snapshot(self) -> None:
+        result = self.run_service()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("sync failed; nothing published", result.stderr)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertFalse(any("latest.json" in argument for call in calls for argument in call["args"]))

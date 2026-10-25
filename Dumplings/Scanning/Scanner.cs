@@ -121,7 +121,7 @@ namespace Dumplings.Scanning
                     || tx.Inputs.Select(x => x.OutPoint.Hash).Distinct().Count(isKnownOtherCoinJoin) >= Constants.OtherCoinJoinMinParentCoinJoins);
         }
 
-        public async Task ScanAsync(bool rescan)
+        public async Task ScanAsync(bool rescan, ulong? fromHeight = null, bool includeTip = false)
         {
             if (rescan)
             {
@@ -140,7 +140,7 @@ namespace Dumplings.Scanning
 
             var opreturnTransactionCache = new MemoryCache(new MemoryCacheOptions() { SizeLimit = 100000 });
 
-            ulong startingHeight = Constants.FirstJoinMarketBlock;
+            ulong startingHeight = fromHeight ?? Constants.FirstJoinMarketBlock;
             ulong height = startingHeight;
             if (File.Exists(LastProcessedBlockHeightPath) || File.Exists(CheckpointPath))
             {
@@ -444,7 +444,7 @@ namespace Dumplings.Scanning
                         stopWatch.Restart();
                     }
                 }
-                if (bestHeight <= height)
+                if (!includeTip && bestHeight <= height)
                 {
                     // Refresh bestHeight and if still no new block, then end here.
                     bestHeight = (ulong)await Rpc.GetBlockCountAsync().ConfigureAwait(false);
@@ -477,7 +477,8 @@ namespace Dumplings.Scanning
                 height++;
             }
 
-            // The tip block is left unsaved by design; everything before it is committed now.
+            // Live scans leave the tip unsaved. A caller that froze Core may
+            // explicitly include it; height then points one past that saved tip.
             if (pendingBlocks > 0)
             {
                 ScanCheckpoint.Commit(CheckpointPath, LastProcessedBlockHeightPath, height - 1, OutputPaths);

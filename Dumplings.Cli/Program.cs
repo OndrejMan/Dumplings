@@ -25,19 +25,41 @@ namespace Dumplings.Cli
             {
                 UserPassword = rpcCred
             };
-            var client = new RPCClient(rpcConf, Network.Main);
+            var rpcUrl = new Uri("http://127.0.0.1:8332/");
+            var network = Network.Main;
+            ulong? scanStart = null;
+            bool includeTip = false;
+            foreach (var arg in args)
+            {
+                if (arg.StartsWith("--rpcurl=", StringComparison.Ordinal))
+                    rpcUrl = new Uri(arg.Substring("--rpcurl=".Length));
+                if (arg.StartsWith("--network=", StringComparison.Ordinal))
+                    network = arg.Substring("--network=".Length) switch
+                    {
+                        "main" => Network.Main,
+                        "regtest" => Network.RegTest,
+                        _ => throw new ArgumentException("Unsupported Bitcoin network")
+                    };
+                if (arg.StartsWith("--startheight=", StringComparison.Ordinal))
+                    scanStart = ulong.Parse(arg.Substring("--startheight=".Length));
+                if (arg == "--include-tip")
+                    includeTip = true;
+            }
+            if (scanStart == 0 || (scanStart.HasValue && network != Network.RegTest))
+                throw new ArgumentException("A positive --startheight is supported only for regtest validation");
+            var client = new RPCClient(rpcConf, rpcUrl, network);
 
             using (BenchmarkLogger.Measure(operationName: $"{command} Command"))
             {
                 if (command == Command.Resync)
                 {
                     var scanner = new Scanner(client);
-                    await scanner.ScanAsync(rescan: true);
+                    await scanner.ScanAsync(rescan: true, fromHeight: scanStart, includeTip: includeTip);
                 }
                 //else if (command == Command.Sync)
                 {
                     var scanner = new Scanner(client);
-                    await scanner.ScanAsync(rescan: false);
+                    await scanner.ScanAsync(rescan: false, fromHeight: scanStart, includeTip: includeTip);
                 }
                 if (command == Command.Check)
                 {
