@@ -164,7 +164,7 @@ namespace Dumplings.Scanning
                     || tx.Inputs.Select(x => x.OutPoint.Hash).Distinct().Count(isKnownOtherCoinJoin) >= Constants.OtherCoinJoinMinParentCoinJoins);
         }
 
-        public async Task ScanAsync(bool rescan)
+        public async Task ScanAsync(bool rescan, ulong? fromHeight = null)
         {
             if (rescan)
             {
@@ -183,7 +183,7 @@ namespace Dumplings.Scanning
 
             var opreturnTransactionCache = new MemoryCache(new MemoryCacheOptions() { SizeLimit = 100000 });
 
-            ulong startingHeight = Constants.FirstJoinMarketBlock;
+            ulong startingHeight = fromHeight ?? Constants.FirstJoinMarketBlock;
             ulong height = startingHeight;
             if (File.Exists(LastProcessedBlockHeightPath) || File.Exists(CheckpointPath))
             {
