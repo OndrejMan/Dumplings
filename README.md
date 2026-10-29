@@ -36,6 +36,11 @@ after the format, analyzer and unit-test jobs pass. Pushes to `master`, `v*` tag
 and manual runs also publish amd64/arm64 images. Tags include `latest` on the
 default branch, `sha-<full-commit>` and versions for version tags.
 
+coinjoin-pipeline's manually started `mainnet-sync` runs this image on
+MetaCentrum PBS nodes through Apptainer, one `sync --frozen-height` pass per
+synchronization, and mirrors `Scanner/` to S3 itself. The image has no scheduler
+and does not publish anything.
+
 `/app/COMMIT` records the source commit and can be inspected without a scan:
 
 ```bash
