@@ -17,6 +17,13 @@ unsaved. Use `--include-tip` only after freezing Core's network activity to
 save detections and the checkpoint through that fixed tip. The PBS worker
 verifies that Core's height/hash did not change during the scan.
 
+For a historical test that stops during initial block download, also pass
+`--frozen-height=H`. This requires `--include-tip`, disabled Core networking,
+and exactly height H; it allows headers to be ahead of downloaded blocks.
+Without this option the normal fully synchronized Core check still applies.
+A frozen tip before block 336861 produces an empty Scanner checkpoint at its
+actual height, and a later run resumes from the normal CoinJoin scan boundary.
+
 An isolated local fixture may use `--network=regtest --startheight=1`.
 Mainnet remains the default; overriding the start height is restricted to
 regtest. These options let the same CLI participate in a real local
