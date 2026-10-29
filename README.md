@@ -9,6 +9,30 @@
 1. `cd Dumplings/Dumplings.Cli`
 1. `dotnet run -- sync --rpccookiefile="$HOME/.bitcoin/.cookie"`
 
+# Container image
+
+This repository builds and publishes the image `ghcr.io/ondrejman/dumplings`:
+the CLI and the .NET runtime, with `dotnet /app/Dumplings.Cli.dll` as its
+entrypoint and `/data` as the working directory. CI validates an amd64 image
+after the format, analyzer and unit-test jobs pass. Pushes to `master`, `v*` tags
+and manual runs also publish amd64/arm64 images. Tags include `latest` on the
+default branch, `sha-<full-commit>` and versions for version tags.
+
+`/app/COMMIT` records the source commit and can be inspected without a scan:
+
+```bash
+docker run --rm --entrypoint cat ghcr.io/ondrejman/dumplings:latest /app/COMMIT
+```
+
+For a local build, supply its source revision:
+
+```bash
+docker build --build-arg DUMPLINGS_COMMIT="$(git rev-parse HEAD)" -t dumplings:local .
+```
+
+Pass the usual CLI arguments after the image name, with the data mounted at
+`/data` and access to Core's RPC.
+
 # Usage
 
 1. Run Bitcoin, wait until it's synchronized.
