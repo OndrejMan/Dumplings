@@ -29,6 +29,7 @@ namespace Dumplings.Cli
             var network = Network.Main;
             ulong? scanStart = null;
             bool includeTip = false;
+            ulong? frozenHeight = null;
             foreach (var arg in args)
             {
                 if (arg.StartsWith("--rpcurl=", StringComparison.Ordinal))
@@ -44,21 +45,25 @@ namespace Dumplings.Cli
                     scanStart = ulong.Parse(arg.Substring("--startheight=".Length));
                 if (arg == "--include-tip")
                     includeTip = true;
+                if (arg.StartsWith("--frozen-height=", StringComparison.Ordinal))
+                    frozenHeight = ulong.Parse(arg.Substring("--frozen-height=".Length));
             }
             if (scanStart == 0 || (scanStart.HasValue && network != Network.RegTest))
                 throw new ArgumentException("A positive --startheight is supported only for regtest validation");
+            if (frozenHeight.HasValue && !includeTip)
+                throw new ArgumentException("--frozen-height requires --include-tip");
             var client = new RPCClient(rpcConf, rpcUrl, network);
 
             using (BenchmarkLogger.Measure(operationName: $"{command} Command"))
             {
                 if (command == Command.Resync)
                 {
-                    var scanner = new Scanner(client);
+                    var scanner = new Scanner(client, frozenHeight);
                     await scanner.ScanAsync(rescan: true, fromHeight: scanStart, includeTip: includeTip);
                 }
                 //else if (command == Command.Sync)
                 {
-                    var scanner = new Scanner(client);
+                    var scanner = new Scanner(client, frozenHeight);
                     await scanner.ScanAsync(rescan: false, fromHeight: scanStart, includeTip: includeTip);
                 }
                 if (command == Command.Check)
