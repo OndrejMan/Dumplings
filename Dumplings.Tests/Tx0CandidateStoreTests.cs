@@ -74,6 +74,8 @@ namespace Dumplings.Tests
             Assert.Equal(RpcParser.ToLine(Tx0(TxC)), RpcParser.ToLine(tx));
             Assert.False(store.TryGet(uint256.Parse(TxB), out _));
             Assert.Equal(2, store.Count);
+            Assert.True(store.Contains(uint256.Parse(TxA)));
+            Assert.False(store.Contains(uint256.Parse(TxB)));
         }
 
         [Fact]
