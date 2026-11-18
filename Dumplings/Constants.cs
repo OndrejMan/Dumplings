@@ -71,9 +71,29 @@ namespace Dumplings
             Money.Coins(0.05m),  // Samourai pools
             Money.Coins(0.5m),   // Samourai pools
             Money.Coins(0.25m),  // Ashigaru pools  
-            Money.Coins(0.025m)  // Ashigaru pools  
-       
+            Money.Coins(0.025m)  // Ashigaru pools
+
         };
+
+        /// <summary>
+        /// Height of the first coinjoin of each Whirlpool pool, in satoshis. These are the funding transactions from which
+        /// coinjoin-analysis seeds its pools (cj_consts.WHIRLPOOL_FUNDING_TXS). Before that height an equal-output transaction
+        /// of the pool size cannot be a round of that pool: the Ashigaru pools started in 2025 (PETS 2026 paper, Sect. 2.1),
+        /// yet 0.25 BTC look-alikes exist from 2021.
+        /// </summary>
+        public static readonly IReadOnlyDictionary<long, ulong> SamouraiPoolFirstBlocks = new Dictionary<long, ulong>
+        {
+            [Money.Coins(0.05m).Satoshi] = 572030,  // a554db794560458c102bab0af99773883df13bc66ad287c29610ad9bac138926, 2019-04-17
+            [Money.Coins(0.01m).Satoshi] = 577445,  // 4c906f89…, a4259682…, c6c27bef…, 2019-05-23
+            [Money.Coins(0.5m).Satoshi] = 588252,   // b42df707a3d876b24a22b0199e18dc39aba2eafa6dbeaaf9dd23d925bb379c59, 2019-08-02
+            [Money.Coins(0.001m).Satoshi] = 673322, // ac9566a240a5e037471b1a58ea50206062c13e1a75c0c2de3f21c7053573330a, 2021-03-05
+            [Money.Coins(0.025m).Satoshi] = 899205, // AshigaruSeedTxIds[0], 2025-05-31
+            [Money.Coins(0.25m).Satoshi] = 899973,  // AshigaruSeedTxIds[1], 2025-06-06
+        };
+
+        /// <summary>Whether a Whirlpool round of this pool size can exist at this height.</summary>
+        public static bool IsSamouraiPool(Money poolSize, ulong height)
+            => SamouraiPoolFirstBlocks.TryGetValue(poolSize.Satoshi, out var firstBlock) && height >= firstBlock;
 
         public static readonly uint256[] AshigaruSeedTxIds = new[]
         {

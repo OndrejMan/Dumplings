@@ -94,6 +94,7 @@ namespace Dumplings.Scanning
         /// A round without any input equal to p BTC (no remix) is accepted only when every input spends a stored tx0
         /// candidate. Such rounds start every pool, as no postmix coin exists yet to remix. Rejected, they were looked
         /// up as tx0s of the later rounds that remix their outputs.
+        /// A pool counts only from its first coinjoin (<see cref="Constants.SamouraiPoolFirstBlocks"/>).
         /// </summary>
         /// <param name="isTx0Candidate">Whether a txid is a stored tx0 candidate (<see cref="Tx0CandidateStore.IsCandidate"/>).</param>
         internal static bool IsSamouraiCoinJoin(VerboseTransactionInfo tx, ulong height, Func<uint256, bool> isTx0Candidate)
@@ -112,7 +113,7 @@ namespace Dumplings.Scanning
                 && inputs.Length >= 5 && inputs.Length <= 10
                 && outputs.Length == inputs.Length
                 && outputs.All(x => x.Value == poolSize) // Outputs are always equal.
-                && Constants.SamouraiPools.Any(x => x == poolSize) // Just to be sure match Samourai's pool sizes.
+                && Constants.IsSamouraiPool(poolSize, height)
                 && (poolSizedInputCount >= 1 || inputs.All(x => isTx0Candidate(x.OutPoint.Hash)))
                 && inputs.Where(x => x.PrevOutput.Value != poolSize).All(x => x.PrevOutput.Value.Almost(poolSize, SamouraiPremixMargin));
         }
