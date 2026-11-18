@@ -91,8 +91,12 @@ namespace Dumplings.Scanning
         /// of them equal to p BTC, the remaining two to four between p and p + 0.0011 BTC.
         /// Since Whirlpool rounds grew beyond five participants, this accepts 5 to 10 inputs and as many outputs, and drops
         /// the upper limit on inputs equal to p BTC.
+        /// A round without any input equal to p BTC (no remix) is accepted only when every input spends a stored tx0
+        /// candidate. Such rounds start every pool, as no postmix coin exists yet to remix. Rejected, they were looked
+        /// up as tx0s of the later rounds that remix their outputs.
         /// </summary>
-        internal static bool IsSamouraiCoinJoin(VerboseTransactionInfo tx, ulong height)
+        /// <param name="isTx0Candidate">Whether a txid is a stored tx0 candidate (<see cref="Tx0CandidateStore.IsCandidate"/>).</param>
+        internal static bool IsSamouraiCoinJoin(VerboseTransactionInfo tx, ulong height, Func<uint256, bool> isTx0Candidate)
         {
             var inputs = tx.Inputs.ToArray();
             var outputs = tx.Outputs.ToArray();
@@ -109,7 +113,7 @@ namespace Dumplings.Scanning
                 && outputs.Length == inputs.Length
                 && outputs.All(x => x.Value == poolSize) // Outputs are always equal.
                 && Constants.SamouraiPools.Any(x => x == poolSize) // Just to be sure match Samourai's pool sizes.
-                && poolSizedInputCount >= 1
+                && (poolSizedInputCount >= 1 || inputs.All(x => isTx0Candidate(x.OutPoint.Hash)))
                 && inputs.Where(x => x.PrevOutput.Value != poolSize).All(x => x.PrevOutput.Value.Almost(poolSize, SamouraiPremixMargin));
         }
 
@@ -297,7 +301,13 @@ namespace Dumplings.Scanning
                             }
 
                             // IDENTIFY SAMOURAI COINJOINS
-                            isSamouraiCj = IsSamouraiCoinJoin(tx, block.Height);
+                            // Only the persistent store and this block's earlier candidates confirm a round without remix, not the
+                            // size-limited OP_RETURN cache, so the result does not depend on what the cache has evicted.
+                            isSamouraiCj = IsSamouraiCoinJoin(tx, block.Height, txid => tx0Candidates.Contains(txid) || blockTx0Candidates.Any(x => x.Id == txid));
+                            if (isSamouraiCj && tx.Inputs.All(x => x.PrevOutput.Value != tx.Outputs.First().Value))
+                            {
+                                Logger.LogInfo($"Samourai coinjoin {tx.Id} in block {block.Height} has no remix input; every input spends a tx0 candidate.");
+                            }
 
                             // IDENTIFY OTHER EQUAL OUTPUT COINJOIN LIKE TRANSACTIONS
                             if (!isWasabi2Cj && !isWasabiCj && !isSamouraiCj)
