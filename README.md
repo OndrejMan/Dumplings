@@ -11,6 +11,19 @@
 
 # Container image
 
+For a coordinated one-shot run, the CLI accepts `--rpcurl=http://127.0.0.1:PORT/`
+alongside `--rpccookiefile=PATH`. Its normal live scan leaves the current tip
+unsaved. Use `--include-tip` only after freezing Core's network activity to
+save detections and the checkpoint through that fixed tip. The PBS worker
+verifies that Core's height/hash did not change during the scan.
+
+For a historical test that stops during initial block download, also pass
+`--frozen-height=H`. This requires `--include-tip`, disabled Core networking,
+and exactly height H; it allows headers to be ahead of downloaded blocks.
+Without this option the normal fully synchronized Core check still applies.
+A frozen tip before block 336861 produces an empty Scanner checkpoint at its
+actual height, and a later run resumes from the normal CoinJoin scan boundary.
+
 An isolated local fixture may use `--network=regtest --startheight=1`.
 Mainnet remains the default; overriding the start height is restricted to
 regtest. These options let the same CLI participate in a real local
@@ -22,6 +35,11 @@ entrypoint and `/data` as the working directory. CI validates an amd64 image
 after the format, analyzer and unit-test jobs pass. Pushes to `master`, `v*` tags
 and manual runs also publish amd64/arm64 images. Tags include `latest` on the
 default branch, `sha-<full-commit>` and versions for version tags.
+
+coinjoin-pipeline's manually started `mainnet-sync` runs this image on
+MetaCentrum PBS nodes through Apptainer, one `sync --frozen-height` pass per
+synchronization, and mirrors `Scanner/` to S3 itself. The image has no scheduler
+and does not publish anything.
 
 `/app/COMMIT` records the source commit and can be inspected without a scan:
 
