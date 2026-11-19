@@ -86,6 +86,9 @@ namespace Dumplings.Scanning
             }
         }
 
+        /// <summary>Whether the transaction is a stored candidate, without reading its line.</summary>
+        public bool Contains(uint256 txid) => _offsets.ContainsKey(txid);
+
         public bool TryGet(uint256 txid, out VerboseTransactionInfo tx)
         {
             if (!_offsets.TryGetValue(txid, out var offset))
