@@ -92,6 +92,35 @@ namespace Dumplings.Tests
         }
 
         [Fact]
+        public void AcceptsMainnetRoundWithP2wshOutput04236db9()
+        {
+            // Block 749348: three remixes and two premixes of the 0.01 BTC pool; one output pays a P2WSH script.
+            Assert.True(Scanner.IsSamouraiCoinJoin(_04236db9(), 749348, NoStoredTx0Candidates, NoBlockTx0Candidates));
+        }
+
+        [Fact]
+        public void RejectsRoundWithP2wshInput()
+        {
+            // Only an output may be P2WSH: the coordinator takes a single-key signature for every input.
+            var p2wsh = In(RandomUtils.GetUInt256().ToString(), 0, Pool, "0020ae1d8a2b8c1395fe28d73300b864bc7c505ebbbb7d5423822d38426c94ff776c");
+            var tx = Tx(
+                new[] { p2wsh, In(Pool), In(Pool + 10_000), In(Pool + 10_000), In(Pool + 6_050) },
+                Enumerable.Repeat(Pool, 5).Select(x => Out(x)).ToArray());
+
+            Assert.False(Scanner.IsSamouraiCoinJoin(tx, Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
+        }
+
+        [Fact]
+        public void RejectsRoundWithTaprootOutput()
+        {
+            var outputs = Enumerable.Repeat(Pool, 4).Select(x => Out(x)).ToList();
+            outputs.Add(new VerboseOutputInfo(Money.Satoshis(Pool), new Key().PubKey.GetScriptPubKey(ScriptPubKeyType.TaprootBIP86)));
+            var tx = Tx(new[] { In(Pool), In(Pool), In(Pool + 10_000), In(Pool + 10_000), In(Pool + 6_050) }, outputs.ToArray());
+
+            Assert.False(Scanner.IsSamouraiCoinJoin(tx, Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
+        }
+
+        [Fact]
         public void RejectsInputAbovePremixMargin()
         {
             var tx = Tx(
@@ -129,6 +158,26 @@ namespace Dumplings.Tests
                 Out(5000000, "001457ccff6ef2ca1f6e65867b0a3ece7a5ab5448495"),
                 Out(5000000, "0014e057ab160749692a13b7c5569709e846091126dd"),
                 Out(5000000, "0014e44a7bf68a5d22bdf4fb4e7b3fe6984a411a3756"),
+            });
+
+        private static VerboseTransactionInfo _04236db9() => new(
+            null,
+            uint256.Parse("04236db9e38102a5bb2373bb0c1c8eaaad3bc62ece72ad74a8a0e33af3b3fc0a"),
+            new[]
+            {
+                In("34512bfda2be0d792e6ffff7dba3634244eb340c2cbc98404ee5b42318589da0", 0, 1000000, "001402200a91788f1a1199c816254d08d32788a3b46a"),
+                In("5eca6a4c02d3a440c314383ad4fd664d968dad4390f043bb3d7d07cdf811ba1c", 28, 1000302, "0014bf6279d7a69a639a907e741c322c4b8671d90c77"),
+                In("9a7db61976ce8ff8c763b5af99b28d4f3e2cddd110c13796d273109f24c9e420", 3, 1000000, "0014f54ddd0a3a89fa6fab4ab811159b40a9e9a264de"),
+                In("dcb00a211048a8ebeb569f3678789e261f1d2fb9fcafb5f4155ae3a10c71d347", 4, 1002117, "001484f0c908be866aa5e2d4f9e10c1406cf66695ecf"),
+                In("ff65f303a1950d690a8610784de51b367a63953aea25a62ddcd94af16f0805dc", 4, 1000000, "0014e674df6929f978d86bbff4dfe468abf5a58ed922"),
+            },
+            new[]
+            {
+                Out(1000000, "001461352f7f20dec67ff8af0750ebdacd18ea5270b6"),
+                Out(1000000, "0014998b8cb0fec39a16c23738ac35bcac78001cc885"),
+                Out(1000000, "0014d669b5630dc3a38e829b5e622fe44d57d58dce62"),
+                Out(1000000, "0014f2c45664dcce1bdaefda262e6c9bb2f8afef276e"),
+                Out(1000000, "0020ae1d8a2b8c1395fe28d73300b864bc7c505ebbbb7d5423822d38426c94ff776c"),
             });
 
         private static VerboseTransactionInfo F8d1354b() => new(
