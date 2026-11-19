@@ -293,6 +293,10 @@ namespace Dumplings.Scanning
 
                             // IDENTIFY SAMOURAI COINJOINS
                             isSamouraiCj = IsSamouraiCoinJoin(tx, block.Height, tx0Candidates, blockTx0Candidates);
+                            if (isSamouraiCj && tx.Inputs.All(x => x.PrevOutput.Value != tx.Outputs.First().Value))
+                            {
+                                Logger.LogInfo($"Samourai coinjoin {tx.Id} in block {block.Height} has no remix input; every input spends a tx0 candidate.");
+                            }
 
                             // IDENTIFY OTHER EQUAL OUTPUT COINJOIN LIKE TRANSACTIONS
                             if (!isWasabi2Cj && !isWasabiCj && !isSamouraiCj)
