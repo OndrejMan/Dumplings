@@ -11,6 +11,11 @@
 
 # Container image
 
+An isolated local fixture may use `--network=regtest --startheight=1`.
+Mainnet remains the default; overriding the start height is restricted to
+regtest. These options let the same CLI participate in a real local
+Core/Dumplings/BlockSci integration test without downloading mainnet.
+
 This repository builds and publishes the image `ghcr.io/ondrejman/dumplings`:
 the CLI and the .NET runtime, with `dotnet /app/Dumplings.Cli.dll` as its
 entrypoint and `/data` as the working directory. CI validates an amd64 image
