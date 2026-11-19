@@ -83,6 +83,40 @@ namespace Dumplings.Scanning
         }
 
         /// <summary>
+        /// Identifies Samourai Whirlpool coinjoins.
+        /// </summary>
+        /// <param name="isNativeSegwitOnly">Whether every input and output is P2WPKH.</param>
+        internal static bool IsSamouraiCoinJoin(VerboseTransactionInfo tx, bool isNativeSegwitOnly, ulong height)
+        {
+            if (height < Constants.FirstSamouraiBlock)
+            {
+                return false;
+            }
+
+            // Pinpointing and Measuring Wasabi and Samourai CoinJoins in the Bitcoin Ecosystem
+            // Slightly improved on SCDH
+            // Samourai CoinJoin Detection Heuristic (SCDH) If a transaction t has exactly
+            // five uniform outputs that equal p BTC and if it has precisely five inputs, with at
+            // least one and at most three equal p BTC, while the remaining two to four inputs
+            // are between p and p +0.0011 BTC, then t is a Samourai Whirlpool CoinJoin
+            // transaction.
+            var outputValues = tx.Outputs.Select(x => x.Value);
+            var outputCount = tx.Outputs.Count();
+            var inputCount = tx.Inputs.Count();
+            var poolSize = tx.Outputs.First().Value;
+            var poolSizedInputCount = tx.Inputs.Count(x => x.PrevOutput.Value == poolSize);
+            return
+                isNativeSegwitOnly
+                && inputCount >= 5 && inputCount <= 10
+                && outputCount >= 5 && outputCount <= 10
+                && inputCount == outputCount
+                && outputValues.Distinct().Count() == 1 // Outputs are always equal.
+                && Constants.SamouraiPools.Any(x => x == poolSize) // Just to be sure match Samourai's pool sizes.
+                && poolSizedInputCount >= 1
+                && tx.Inputs.Where(x => x.PrevOutput.Value != poolSize).All(x => x.PrevOutput.Value.Almost(poolSize, Money.Coins(0.0011m)));
+        }
+
+        /// <summary>
         /// Identifies other (in practice JoinMarket) equal output coinjoin like transactions.
         /// Only meaningful for non-coinbase transactions that weren't identified as Wasabi, Wasabi 2 or Samourai coinjoins.
         /// </summary>
@@ -252,27 +286,7 @@ namespace Dumplings.Scanning
                             }
 
                             // IDENTIFY SAMOURAI COINJOINS
-                            if (block.Height >= Constants.FirstSamouraiBlock)
-                            {
-                                // Pinpointing and Measuring Wasabi and Samourai CoinJoins in the Bitcoin Ecosystem
-                                // Slightly improved on SCDH
-                                // Samourai CoinJoin Detection Heuristic (SCDH) If a transaction t has exactly
-                                // five uniform outputs that equal p BTC and if it has precisely five inputs, with at
-                                // least one and at most three equal p BTC, while the remaining two to four inputs
-                                // are between p and p +0.0011 BTC, then t is a Samourai Whirlpool CoinJoin
-                                // transaction.
-                                var poolSize = tx.Outputs.First().Value;
-                                var poolSizedInputCount = tx.Inputs.Count(x => x.PrevOutput.Value == poolSize);
-                                isSamouraiCj =
-                                   isNativeSegwitOnly
-                                   && inputCount >= 5 && inputCount <= 10
-                                   && outputCount >= 5 && outputCount <= 10
-                                   && inputCount == outputCount
-                                   && outputValues.Distinct().Count() == 1 // Outputs are always equal.
-                                   && Constants.SamouraiPools.Any(x => x == poolSize) // Just to be sure match Samourai's pool sizes.
-                                   && poolSizedInputCount >= 1
-                                   && tx.Inputs.Where(x => x.PrevOutput.Value != poolSize).All(x => x.PrevOutput.Value.Almost(poolSize, Money.Coins(0.0011m)));
-                            }
+                            isSamouraiCj = IsSamouraiCoinJoin(tx, isNativeSegwitOnly, block.Height);
 
                             // IDENTIFY OTHER EQUAL OUTPUT COINJOIN LIKE TRANSACTIONS
                             if (!isWasabi2Cj && !isWasabiCj && !isSamouraiCj)
