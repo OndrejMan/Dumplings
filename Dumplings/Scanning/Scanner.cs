@@ -95,6 +95,8 @@ namespace Dumplings.Scanning
         /// candidate. Such rounds start every pool, as no postmix coin exists yet to remix. Rejected, they were looked
         /// up as tx0s of the later rounds that remix their outputs.
         /// A pool counts only from its first coinjoin (<see cref="Constants.SamouraiPoolFirstBlocks"/>).
+        /// An output may also be P2WSH: a client can send its postmix output to another wallet (Sparrow's "Mix to", from
+        /// version 1.5.0), in practice a multisig one. Inputs stay P2WPKH, the script of the premix and postmix accounts.
         /// </summary>
         /// <param name="isTx0Candidate">Whether a txid is a stored tx0 candidate (<see cref="Tx0CandidateStore.IsCandidate"/>).</param>
         internal static bool IsSamouraiCoinJoin(VerboseTransactionInfo tx, ulong height, Func<uint256, bool> isTx0Candidate)
@@ -109,7 +111,7 @@ namespace Dumplings.Scanning
             var poolSize = outputs[0].Value;
             var poolSizedInputCount = inputs.Count(x => x.PrevOutput.Value == poolSize);
             return inputs.All(x => x.PrevOutput.ScriptPubKey.IsScriptType(ScriptType.P2WPKH))
-                && outputs.All(x => x.ScriptPubKey.IsScriptType(ScriptType.P2WPKH))
+                && outputs.All(x => x.ScriptPubKey.IsScriptType(ScriptType.P2WPKH) || x.ScriptPubKey.IsScriptType(ScriptType.P2WSH))
                 && inputs.Length >= 5 && inputs.Length <= 10
                 && outputs.Length == inputs.Length
                 && outputs.All(x => x.Value == poolSize) // Outputs are always equal.
