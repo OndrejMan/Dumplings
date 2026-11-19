@@ -2,7 +2,7 @@ using Dumplings.Rpc;
 using Dumplings.Scanning;
 using NBitcoin;
 using System;
-using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Xunit;
 
@@ -13,7 +13,9 @@ namespace Dumplings.Tests
         private const long Pool = 5_000_000; // The 0.05 BTC pool.
         private const ulong Height = 600_000; // Every pool before 0.001 BTC exists here.
 
-        private static readonly Func<uint256, bool> NoTx0Candidates = _ => false;
+        // No file exists at this path, so the store is empty and never touches the disk.
+        private static readonly Tx0CandidateStore NoStoredTx0Candidates = new(Path.Combine(Path.GetTempPath(), "no-tx0-candidates-" + Guid.NewGuid()));
+        private static readonly VerboseTransactionInfo[] NoBlockTx0Candidates = Array.Empty<VerboseTransactionInfo>();
 
         [Fact]
         public void AcceptsRoundWithRemix()
@@ -23,7 +25,7 @@ namespace Dumplings.Tests
                 new[] { In(Pool), In(Pool), In(Pool + 10_000), In(Pool + 10_000), In(Pool + 6_050) },
                 Enumerable.Repeat(Pool, 5).Select(x => Out(x)).ToArray());
 
-            Assert.True(Scanner.IsSamouraiCoinJoin(tx, Height, NoTx0Candidates));
+            Assert.True(Scanner.IsSamouraiCoinJoin(tx, Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
         }
 
         [Fact]
@@ -32,19 +34,19 @@ namespace Dumplings.Tests
             // Block 572030, the first round of the 0.05 BTC pool: five premixes, no remix. Its five parents are tx0s with
             // an OP_RETURN (checked on mempool.space) and the funding transactions of coinjoin-analysis name it.
             var tx = A554db79();
-            var tx0s = new HashSet<uint256>(tx.Inputs.Select(x => x.OutPoint.Hash));
+            var tx0s = tx.Inputs.Select(x => Parent(x.OutPoint.Hash)).ToArray();
 
-            Assert.False(Scanner.IsSamouraiCoinJoin(tx, 572030, NoTx0Candidates)); // Before: missed, then looked up as a tx0.
-            Assert.True(Scanner.IsSamouraiCoinJoin(tx, 572030, tx0s.Contains));
+            Assert.False(Scanner.IsSamouraiCoinJoin(tx, 572030, NoStoredTx0Candidates, NoBlockTx0Candidates)); // Before: missed, then looked up as a tx0.
+            Assert.True(Scanner.IsSamouraiCoinJoin(tx, 572030, NoStoredTx0Candidates, tx0s));
         }
 
         [Fact]
         public void RejectsRoundWithoutRemixWhenOneParentIsNoTx0Candidate()
         {
             var tx = A554db79();
-            var tx0s = new HashSet<uint256>(tx.Inputs.Select(x => x.OutPoint.Hash).Skip(1));
+            var tx0s = tx.Inputs.Skip(1).Select(x => Parent(x.OutPoint.Hash)).ToArray();
 
-            Assert.False(Scanner.IsSamouraiCoinJoin(tx, 572030, tx0s.Contains));
+            Assert.False(Scanner.IsSamouraiCoinJoin(tx, 572030, NoStoredTx0Candidates, tx0s));
         }
 
         [Fact]
@@ -54,7 +56,7 @@ namespace Dumplings.Tests
                 new[] { In(Pool), In(Pool + 10_000), In(Pool + 10_000), In(Pool + 10_000), In(Pool + 110_001) },
                 Enumerable.Repeat(Pool, 5).Select(x => Out(x)).ToArray());
 
-            Assert.False(Scanner.IsSamouraiCoinJoin(tx, Height, NoTx0Candidates));
+            Assert.False(Scanner.IsSamouraiCoinJoin(tx, Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
         }
 
         [Fact]
@@ -64,7 +66,7 @@ namespace Dumplings.Tests
                 new[] { In(Pool), In(Pool + 10_000), In(Pool + 10_000), In(Pool + 10_000), In(Pool + 10_000), In(Pool + 10_000) },
                 Enumerable.Repeat(Pool, 5).Select(x => Out(x)).ToArray());
 
-            Assert.False(Scanner.IsSamouraiCoinJoin(tx, Height, NoTx0Candidates));
+            Assert.False(Scanner.IsSamouraiCoinJoin(tx, Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
         }
 
         private static VerboseTransactionInfo A554db79() => new(
@@ -86,6 +88,10 @@ namespace Dumplings.Tests
                 Out(5000000, "0014e057ab160749692a13b7c5569709e846091126dd"),
                 Out(5000000, "0014e44a7bf68a5d22bdf4fb4e7b3fe6984a411a3756"),
             });
+
+        /// <summary>A tx0 candidate of the same block; the detector reads only its txid.</summary>
+        private static VerboseTransactionInfo Parent(uint256 txid)
+            => new(null, txid, Array.Empty<VerboseInputInfo>(), Array.Empty<VerboseOutputInfo>());
 
         private static VerboseTransactionInfo Tx(VerboseInputInfo[] inputs, VerboseOutputInfo[] outputs)
             => new(null, RandomUtils.GetUInt256(), inputs, outputs);

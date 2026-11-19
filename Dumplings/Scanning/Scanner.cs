@@ -95,8 +95,9 @@ namespace Dumplings.Scanning
         /// candidate. Such rounds start every pool, as no postmix coin exists yet to remix. Rejected, they were looked
         /// up as tx0s of the later rounds that remix their outputs.
         /// </summary>
-        /// <param name="isTx0Candidate">Whether a txid is a stored tx0 candidate (<see cref="Tx0CandidateStore.IsCandidate"/>).</param>
-        internal static bool IsSamouraiCoinJoin(VerboseTransactionInfo tx, ulong height, Func<uint256, bool> isTx0Candidate)
+        /// <param name="tx0Candidates">The tx0 candidates of earlier blocks (<see cref="Tx0CandidateStore.IsCandidate"/>).</param>
+        /// <param name="blockTx0Candidates">The tx0 candidates of this block that precede <paramref name="tx"/>.</param>
+        internal static bool IsSamouraiCoinJoin(VerboseTransactionInfo tx, ulong height, Tx0CandidateStore tx0Candidates, IReadOnlyCollection<VerboseTransactionInfo> blockTx0Candidates)
         {
             var inputs = tx.Inputs.ToArray();
             var outputs = tx.Outputs.ToArray();
@@ -113,8 +114,12 @@ namespace Dumplings.Scanning
                 && outputs.Length == inputs.Length
                 && outputs.All(x => x.Value == poolSize) // Outputs are always equal.
                 && Constants.SamouraiPools.Any(x => x == poolSize) // Just to be sure match Samourai's pool sizes.
-                && (poolSizedInputCount >= 1 || inputs.All(x => isTx0Candidate(x.OutPoint.Hash)))
+                && (poolSizedInputCount >= 1 || inputs.All(x => IsTx0Candidate(x.OutPoint.Hash)))
                 && inputs.Where(x => x.PrevOutput.Value != poolSize).All(x => x.PrevOutput.Value.Almost(poolSize, SamouraiPremixMargin));
+
+            // Only the persistent store and this block's earlier candidates confirm a round without remix, not the
+            // size-limited OP_RETURN cache, so the result does not depend on what the cache has evicted.
+            bool IsTx0Candidate(uint256 txid) => tx0Candidates.Contains(txid) || blockTx0Candidates.Any(x => x.Id == txid);
         }
 
         /// <summary>
@@ -287,9 +292,7 @@ namespace Dumplings.Scanning
                             }
 
                             // IDENTIFY SAMOURAI COINJOINS
-                            // Only the persistent store and this block's earlier candidates confirm a round without remix, not the
-                            // size-limited OP_RETURN cache, so the result does not depend on what the cache has evicted.
-                            isSamouraiCj = IsSamouraiCoinJoin(tx, block.Height, txid => tx0Candidates.Contains(txid) || blockTx0Candidates.Any(x => x.Id == txid));
+                            isSamouraiCj = IsSamouraiCoinJoin(tx, block.Height, tx0Candidates, blockTx0Candidates);
 
                             // IDENTIFY OTHER EQUAL OUTPUT COINJOIN LIKE TRANSACTIONS
                             if (!isWasabi2Cj && !isWasabiCj && !isSamouraiCj)
