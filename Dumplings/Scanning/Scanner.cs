@@ -128,9 +128,16 @@ namespace Dumplings.Scanning
         /// <summary>
         /// Identifies Wasabi 1 coinjoins in blocks from <see cref="Constants.FirstWasabiBlock"/>. Only meaningful for non-coinbase
         /// transactions with equal outputs that weren't identified as Wasabi 2 coinjoins.
+        /// Large JoinMarket coinjoins have the shape of the later rule too since JoinMarket moved to native segwit in 2021, and
+        /// labelled as Wasabi 1 they turn the JoinMarket coinjoins that spend them into Wasabi 1 post-mix transactions. David
+        /// Rajnoha found this, see section 1.2 of
+        /// https://github.com/DavidRajnoha/coinjoin-analysis/blob/9c36115596c81a709acbce594c33ca9edafe098e/analysis_output/FINDINGS_2026.md#12-pipeline-issue-wasabi-1-precedence-hides-joinmarket-coinjoins
+        /// A transaction that also passes <see cref="IsOtherCoinJoin"/> is therefore not Wasabi 1. A Wasabi 1 round passes
+        /// that rule only with a single group of equal outputs and one or two participants without change.
         /// </summary>
         /// <param name="isNativeSegwitOnly">Whether all inputs and outputs are P2WPKH.</param>
-        internal static bool IsWasabiCoinJoin(VerboseTransactionInfo tx, ulong height, bool isNativeSegwitOnly)
+        /// <param name="isKnownOtherCoinJoin">Whether a txid is an already detected other coinjoin.</param>
+        internal static bool IsWasabiCoinJoin(VerboseTransactionInfo tx, ulong height, bool isNativeSegwitOnly, Func<uint256, bool> isKnownOtherCoinJoin)
         {
             var indistinguishableOutputs = tx.GetIndistinguishableOutputs(includeSingle: false).ToArray();
             var inputCount = tx.Inputs.Count();
@@ -149,7 +156,8 @@ namespace Dumplings.Scanning
                     && mostFrequentEqualOutputCount >= Constants.MinWW2EqualOutputs
                     && inputCount >= mostFrequentEqualOutputCount // More inptuts than most frequent equal outputs.
                     && mostFrequentEqualOutputValue.Almost(Constants.ApproximateWasabiBaseDenomination, Constants.WasabiBaseDenominationPrecision) // The most frequent equal outputs must be almost the base denomination.
-                    && uniqueOutputCount >= 2; // It's very likely there's at least one change and at least one coord output those have unique values.
+                    && uniqueOutputCount >= 2 // It's very likely there's at least one change and at least one coord output those have unique values.
+                    && !IsOtherCoinJoin(tx, isKnownOtherCoinJoin);
             }
         }
 
@@ -318,7 +326,7 @@ namespace Dumplings.Scanning
                             // IDENTIFY WASABI COINJOINS
                             if (!isWasabi2Cj && block.Height >= Constants.FirstWasabiBlock)
                             {
-                                isWasabiCj = IsWasabiCoinJoin(tx, block.Height, isNativeSegwitOnly);
+                                isWasabiCj = IsWasabiCoinJoin(tx, block.Height, isNativeSegwitOnly, allOtherCoinJoinSet.Contains);
                             }
 
                             // IDENTIFY SAMOURAI COINJOINS
