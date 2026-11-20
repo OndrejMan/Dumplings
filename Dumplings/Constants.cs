@@ -64,6 +64,12 @@ namespace Dumplings
         public static Money ApproximateWasabiBaseDenomination = Money.Coins(0.1m);
         public static Money WasabiBaseDenominationPrecision = Money.Coins(0.02m);
 
+        /// <summary>
+        /// Number of inputs of a Wasabi 1 round from <see cref="FirstWasabiNoCoordAddressBlock"/> that must spend earlier
+        /// Wasabi 1 coinjoins.
+        /// </summary>
+        public const int WasabiMinRemixInputs = 2;
+
         public static IEnumerable<Money> SamouraiPools = new Money[]
         {
             Money.Coins(0.001m), // Samourai pools
