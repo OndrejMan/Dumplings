@@ -121,6 +121,49 @@ namespace Dumplings.Tests
         }
 
         [Fact]
+        public void RejectsMainnetLookAlike4a49f53d()
+        {
+            // Block 815011 (November 2023): four outputs of 0.5 BTC rounds of December 2022 and a fresh coin of
+            // 0.50008369 BTC, put together by a wallet and not by the coordinator: sequence 0xfffffffd and no BIP69
+            // order (also version 2 and locktime 815008). The parent 22991a07… of the fresh coin has the outputs of a
+            // tx0 but not the OP_RETURN the coordinator requires of one.
+            var tx = _4a49f53d();
+            var asTheCoordinatorBuildsIt = Tx(
+                tx.Inputs.Select(x => new VerboseInputInfo(x.OutPoint, x.PrevOutput, uint.MaxValue)).ToArray(),
+                tx.Outputs.ToArray());
+
+            Assert.False(Scanner.IsSamouraiCoinJoin(tx, 815011, NoStoredTx0Candidates, NoBlockTx0Candidates));
+            Assert.True(Scanner.IsSamouraiCoinJoin(asTheCoordinatorBuildsIt, 815011, NoStoredTx0Candidates, NoBlockTx0Candidates));
+            // No coinjoin of another kind either: the scanner files it as a post-mix transaction of the rounds it spends.
+            Assert.False(Scanner.IsOtherCoinJoin(tx, _ => false));
+        }
+
+        [Fact]
+        public void RejectsRoundWithNonFinalSequence()
+        {
+            // One input signals replace-by-fee, as wallets do; the coordinator leaves every sequence final.
+            var inputs = new[] { In(Pool), In(Pool), In(Pool + 10_000), In(Pool + 10_000), In(Pool + 6_050) };
+            inputs[0] = new VerboseInputInfo(inputs[0].OutPoint, inputs[0].PrevOutput, 0xfffffffd);
+            var tx = Tx(inputs, Enumerable.Repeat(Pool, 5).Select(x => Out(x)).ToArray());
+
+            Assert.False(Scanner.IsSamouraiCoinJoin(tx, Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
+        }
+
+        [Fact]
+        public void RejectsRoundNotInBip69Order()
+        {
+            var round = Tx(
+                new[] { In(Pool), In(Pool), In(Pool + 10_000), In(Pool + 10_000), In(Pool + 6_050) },
+                Enumerable.Repeat(Pool, 5).Select(x => Out(x)).ToArray());
+            var inputs = round.Inputs.ToArray();
+            var outputs = round.Outputs.ToArray();
+
+            Assert.True(Scanner.IsSamouraiCoinJoin(round, Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
+            Assert.False(Scanner.IsSamouraiCoinJoin(Unordered(inputs.Reverse().ToArray(), outputs), Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
+            Assert.False(Scanner.IsSamouraiCoinJoin(Unordered(inputs, outputs.Reverse().ToArray()), Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
+        }
+
+        [Fact]
         public void RejectsInputAbovePremixMargin()
         {
             var tx = Tx(
@@ -200,18 +243,44 @@ namespace Dumplings.Tests
                 Out(25000000, "0014f7851b3e9549b964c16392bc68af2bc9150f6f3e"),
             });
 
+        private static VerboseTransactionInfo _4a49f53d() => new(
+            null,
+            uint256.Parse("4a49f53d798e64fcca6c5e31baab359e4fcf37e4dd118fff3af1cd0220d2904a"),
+            new[]
+            {
+                In("0a749eb05e067c5b3476c538e9cdc782a7a64a97ff04209589298bc9a155b70b", 4, 50000000, "001479ce42a277cde3d280f5efd4be2f8c8971573674", 0xfffffffd),
+                In("b6ee5f5ae4b39d8c0e7e9d67b61521026144f0702a11f327d04a09f2a62c3523", 0, 50000000, "001436b85780dc97bfeb2d51c9319db7692921c93834", 0xfffffffd),
+                In("50e20874dada489f025c80cd141f1e6a83373f5329d1b27e6813bb67ff8eb462", 2, 50000000, "00144c37386839ab102fb97ebf939fc400fec6fdfec0", 0xfffffffd),
+                In("22991a0798e7e2aadfeda8e05bf9735bce0e4d10dbbed785a41fca9eca00149b", 0, 50008369, "0014eaf24f77e3056d2975589d45eca11208445b331f", 0xfffffffd),
+                In("23de5290e2d6e6480a67c855c96bfb06403f660f85f908a4ec1921530d1d5519", 1, 50000000, "0014850d76c2a98f9af115b632cb26f60ac3b6548913", 0xfffffffd),
+            },
+            new[]
+            {
+                Out(50000000, "001495854ad6095ef1fc88f92b8c6e01b8de5833d95c"),
+                Out(50000000, "00141248dde1d3537c4273acfc6ee8f2a3caedbccc59"),
+                Out(50000000, "00148e75172bb537c422b11e47bac995fb8af7cf4911"),
+                Out(50000000, "0014b40d8274fc980c6e7f089df3cc6f2228ea9c9f79"),
+                Out(50000000, "0014df0fffbbc937518c571e8270ad70ada863ff24bf"),
+            });
+
         /// <summary>A tx0 candidate of the same block; the detector reads only its txid.</summary>
         private static VerboseTransactionInfo Parent(uint256 txid)
             => new(null, txid, Array.Empty<VerboseInputInfo>(), Array.Empty<VerboseOutputInfo>());
 
+        /// <summary>A transaction in the BIP69 order the coordinator gives a round, sorted here by the displayed hex.</summary>
         private static VerboseTransactionInfo Tx(VerboseInputInfo[] inputs, VerboseOutputInfo[] outputs)
+            => Unordered(
+                inputs.OrderBy(x => x.OutPoint.Hash.ToString(), StringComparer.Ordinal).ThenBy(x => x.OutPoint.N).ToArray(),
+                outputs.OrderBy(x => x.Value.Satoshi).ThenBy(x => x.ScriptPubKey.ToHex(), StringComparer.Ordinal).ToArray());
+
+        private static VerboseTransactionInfo Unordered(VerboseInputInfo[] inputs, VerboseOutputInfo[] outputs)
             => new(null, RandomUtils.GetUInt256(), inputs, outputs);
 
         private static VerboseInputInfo In(long value)
             => new(new OutPoint(RandomUtils.GetUInt256(), 0), Out(value), uint.MaxValue);
 
-        private static VerboseInputInfo In(string parent, uint n, long value, string scriptHex)
-            => new(new OutPoint(uint256.Parse(parent), n), Out(value, scriptHex), uint.MaxValue);
+        private static VerboseInputInfo In(string parent, uint n, long value, string scriptHex, uint sequence = uint.MaxValue)
+            => new(new OutPoint(uint256.Parse(parent), n), Out(value, scriptHex), sequence);
 
         private static VerboseOutputInfo Out(long value)
             => new(Money.Satoshis(value), new Key().PubKey.GetScriptPubKey(ScriptPubKeyType.Segwit));

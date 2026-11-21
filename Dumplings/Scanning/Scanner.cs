@@ -97,6 +97,11 @@ namespace Dumplings.Scanning
         /// A pool counts only from its first coinjoin (<see cref="Constants.SamouraiPoolFirstBlocks"/>).
         /// An output may also be P2WSH: a client can send its postmix output to another wallet (Sparrow's "Mix to", from
         /// version 1.5.0), in practice a multisig one. Inputs stay P2WPKH, the script of the premix and postmix accounts.
+        /// A round is built by the coordinator alone (whirlpool-server, MixService.computeTransaction), so every input
+        /// has the final sequence and inputs and outputs are in BIP69 order. A wallet imitating a round leaves its own
+        /// fingerprint, such as 4a49f53d… in block 815011, which spends four postmix coins and a fresh one with
+        /// sequence 0xfffffffd in unsorted order. Accepted, its parent 22991a07… was looked up as a tx0, which it is
+        /// not: it lacks the OP_RETURN that every tx0 carries and that the coordinator requires of one.
         /// </summary>
         /// <param name="tx0Candidates">The tx0 candidates of earlier blocks (<see cref="Tx0CandidateStore.IsCandidate"/>).</param>
         /// <param name="blockTx0Candidates">The tx0 candidates of this block that precede <paramref name="tx"/>.</param>
@@ -117,12 +122,45 @@ namespace Dumplings.Scanning
                 && outputs.Length == inputs.Length
                 && outputs.All(x => x.Value == poolSize) // Outputs are always equal.
                 && Constants.IsSamouraiPool(poolSize, height)
+                && inputs.All(x => x.Sequence == Sequence.SEQUENCE_FINAL)
+                && IsBip69Ordered(inputs, outputs)
                 && (poolSizedInputCount >= 1 || inputs.All(x => IsTx0Candidate(x.OutPoint.Hash)))
                 && inputs.Where(x => x.PrevOutput.Value != poolSize).All(x => x.PrevOutput.Value.Almost(poolSize, SamouraiPremixMargin));
 
             // Only the persistent store and this block's earlier candidates confirm a round without remix, not the
             // size-limited OP_RETURN cache, so the result does not depend on what the cache has evicted.
             bool IsTx0Candidate(uint256 txid) => tx0Candidates.Contains(txid) || blockTx0Candidates.Any(x => x.Id == txid);
+        }
+
+        /// <summary>
+        /// Whether inputs and outputs are in BIP69 order: inputs by the spent txid as displayed, then by its output
+        /// index; outputs by value, then by the bytes of the scriptPubKey.
+        /// </summary>
+        internal static bool IsBip69Ordered(IReadOnlyList<VerboseInputInfo> inputs, IReadOnlyList<VerboseOutputInfo> outputs)
+        {
+            for (var i = 1; i < inputs.Count; i++)
+            {
+                var previous = inputs[i - 1].OutPoint;
+                var current = inputs[i].OutPoint;
+                var byTxid = previous.Hash.CompareTo(current.Hash);
+                if (byTxid > 0 || (byTxid == 0 && previous.N > current.N))
+                {
+                    return false;
+                }
+            }
+
+            for (var i = 1; i < outputs.Count; i++)
+            {
+                var previous = outputs[i - 1];
+                var current = outputs[i];
+                if (previous.Value > current.Value
+                    || (previous.Value == current.Value && previous.ScriptPubKey.ToBytes().AsSpan().SequenceCompareTo(current.ScriptPubKey.ToBytes()) > 0))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         /// <summary>
