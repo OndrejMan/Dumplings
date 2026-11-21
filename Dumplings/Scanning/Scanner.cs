@@ -86,11 +86,24 @@ namespace Dumplings.Scanning
         private static readonly Money SamouraiPremixMargin = Money.Coins(0.0011m);
 
         /// <summary>
+        /// Most inputs of a Whirlpool round: the largest round seen. Surge Cycles (Samourai, 2023-05-15) add inputs above
+        /// 5×5 as long as the miner fee the premixes bring covers them (whirlpool-server Mix.computeSurge), up to the
+        /// deployment setting server.pools[x].surge, which the public source does not contain. Of the 541 131 rounds up
+        /// to April 2024 none before 2023-11-10 has more than eight inputs, and the largest have 11, 12 and 15 inputs,
+        /// all in blocks 824977–824986 (4e663aa7…, ccb2eb71…, e9cee5d9…). All 808 rounds of Ashigaru up to block
+        /// 975643 have five.
+        /// A larger round is rejected. It becomes visible only once a round remixes one of its outputs: that round
+        /// looks it up as a tx0, and since a round has no OP_RETURN, the lookup writes a line to
+        /// <see cref="Tx0CandidateMissesPath"/>, on which coinjoin-pipeline's mainnet-sync stops.
+        /// </summary>
+        private const int SamouraiMaxRoundInputs = 15;
+
+        /// <summary>
         /// Samourai Whirlpool (and Ashigaru) coinjoin detection, based on SCDH from "Pinpointing and Measuring Wasabi and
         /// Samourai CoinJoins in the Bitcoin Ecosystem": exactly five uniform outputs of p BTC and five inputs, one to three
         /// of them equal to p BTC, the remaining two to four between p and p + 0.0011 BTC.
-        /// Since Whirlpool rounds grew beyond five participants, this accepts 5 to 10 inputs and as many outputs, and drops
-        /// the upper limit on inputs equal to p BTC.
+        /// Since Whirlpool rounds grew beyond five participants, this accepts 5 to <see cref="SamouraiMaxRoundInputs"/>
+        /// inputs and as many outputs, and drops the upper limit on inputs equal to p BTC.
         /// A round without any input equal to p BTC (no remix) is accepted only when every input spends a stored tx0
         /// candidate. Such rounds start every pool, as no postmix coin exists yet to remix. Rejected, they were looked
         /// up as tx0s of the later rounds that remix their outputs.
@@ -118,7 +131,7 @@ namespace Dumplings.Scanning
             var poolSizedInputCount = inputs.Count(x => x.PrevOutput.Value == poolSize);
             return inputs.All(x => x.PrevOutput.ScriptPubKey.IsScriptType(ScriptType.P2WPKH))
                 && outputs.All(x => x.ScriptPubKey.IsScriptType(ScriptType.P2WPKH) || x.ScriptPubKey.IsScriptType(ScriptType.P2WSH))
-                && inputs.Length >= 5 && inputs.Length <= 10
+                && inputs.Length >= 5 && inputs.Length <= SamouraiMaxRoundInputs
                 && outputs.Length == inputs.Length
                 && outputs.All(x => x.Value == poolSize) // Outputs are always equal.
                 && Constants.IsSamouraiPool(poolSize, height)

@@ -29,6 +29,22 @@ namespace Dumplings.Tests
         }
 
         [Fact]
+        public void AcceptsSurgeRoundE9cee5d9WithFifteenInputs()
+        {
+            // Block 824986, a 0.05 BTC round of 15 inputs: 13 remixes and 2 premixes. Rejected for its size, it was looked up
+            // as the tx0 of the rounds that remix its outputs from block 825021 on. It is one of the three unresolved tx0s
+            // that stopped the mainnet synchronization of 2026-11-21 (the first was ccb2eb71…, at block 824980).
+            Assert.True(Scanner.IsSamouraiCoinJoin(E9cee5d9(), 824986, NoStoredTx0Candidates, NoBlockTx0Candidates));
+        }
+
+        [Fact]
+        public void AcceptsRoundsUpToFifteenInputsOnly()
+        {
+            Assert.True(Scanner.IsSamouraiCoinJoin(SurgeRound(15), Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
+            Assert.False(Scanner.IsSamouraiCoinJoin(SurgeRound(16), Height, NoStoredTx0Candidates, NoBlockTx0Candidates));
+        }
+
+        [Fact]
         public void AcceptsMainnetFirstRoundA554db79()
         {
             // Block 572030, the first round of the 0.05 BTC pool: five premixes, no remix. Its five parents are tx0s with
@@ -262,6 +278,51 @@ namespace Dumplings.Tests
                 Out(50000000, "0014b40d8274fc980c6e7f089df3cc6f2228ea9c9f79"),
                 Out(50000000, "0014df0fffbbc937518c571e8270ad70ada863ff24bf"),
             });
+
+        private static VerboseTransactionInfo E9cee5d9() => new(
+            null,
+            uint256.Parse("e9cee5d98a54aa0e9dfcc11525666a95ff26b797c7d5c6bddef7e2ef1bbd72ba"),
+            new[]
+            {
+                In("002c24db9db50c47601f3e24dd4eb5e4a238f055e49868226043fb64c8ff534a", 6, 5000000, "001489289610356e99ce51dd53e93280eea545ef8fa6"),
+                In("17928a333f3c7e17141cfd9e59e15b80ddc4672552db56a8f1d679d26b8b7ba3", 3, 5000000, "001459ebb898fd45ef7531c446df7cbec3a9bf18530f"),
+                In("2fe5c9fc2cb202a00048a2de3c8651f8f3cc00b69f1afe01ba8f0ef7a503ae38", 3, 5000000, "001498051a870edf4c2af6f6e6add6fa13fce5f9922e"),
+                In("3875f41c25ad2a185915411f28195cb85226d8f8e49a432b5a50fb4e9377ce80", 1, 5000000, "00143d12ec22d81d08eccdd932dca1fc87d433e97133"),
+                In("3a1a04d3e2912f7e78550836dfdeedc10a747ec67bcb5043cafb5c98b317bbd0", 3, 5000000, "0014155277c05e8a8191193c90d602befb91472b2918"),
+                In("46f0ff8106ff04cf7626c49f28fb976bfe1f3a1141f265dfcef91714348e8230", 0, 5000000, "001409afdb44bdb420909668b74dc80af322266e1a11"),
+                In("4f519003312749f0f8ae74d2ea2926adb68d8a92f389192e6350b4dde59420c5", 1, 5000000, "00146dad573e9a48cc2e5ae1b049fbe93db9a50df875"),
+                In("5c077032767d10f0794b555a83042b6cc3d314e8ccd98a9f2c597b3cfbfd79b6", 10, 5013650, "0014ca2d88c7fb97a855cec3c9b11f132cbe027eeae0"),
+                In("6033b6e1b052149dd64e43ab846a1716a00277d7b980e8fab10c26acea0d6c8a", 2, 5000000, "0014caf99e697ec2e1910cb5efc1ff64c808aa8b4f8c"),
+                In("9911c75ad8c44360001e87516b43e1b466c63bb78c88a02fc55a4deaaa79477d", 2, 5000000, "0014118d0453feb7878110e878d1fbca62379516400f"),
+                In("aeb049c5651a4e99d630a6dacbd207287fbfc4146aaad3f8d1dde2222f85919e", 0, 5000000, "00142c49811b18064ff28cbcc81b89b5b71eeae404c1"),
+                In("d5c78f52176acf76228979bd4ed20b84daaa4c96ae9b771060683d857585d459", 0, 5000000, "00142be85968d80ee8c928c05d0b3e8b2d396bf46714"),
+                In("e050415d229c317cfc6ff64858925919cdd7d5f36e3604b91d5a3b3f4c75fa48", 1, 5000000, "0014994a3fca6158fcda545841f1314148e6b968577c"),
+                In("eb4eee86e2dcdc7700c6e9cd4aaf2cadb0ce0103e1c43d2752c24173a53cdbca", 12, 5057777, "00143019f55d6aff5af35e8363807a57950b23303e05"),
+                In("f8356878df4cb73e21cf8f7a7873add7eb1263dc36efe8fd9ff16a613a9d7057", 4, 5000000, "0014bbd69eb25a8d1a67a5a2877a7b0b02ac7158d44b"),
+            },
+            new[]
+            {
+                Out(5000000, "001415986f22c95263a2530f844125aee5b07f3157be"),
+                Out(5000000, "001427a91bbc3f683883c80bea02d1327a1fdc61adf6"),
+                Out(5000000, "001440eedf1f9fc3ef6660f7247a4681ab16bb54bcb7"),
+                Out(5000000, "0014469d087bc2b5bbd328cf5751d325d59f850a2097"),
+                Out(5000000, "001455898b6895ab4022b537cab50586d7c3e5209112"),
+                Out(5000000, "0014635fb071d884e4328f7b96a81b5e62299da22e4e"),
+                Out(5000000, "00146ab673486548015dd72e503b1a6cdc69188d3401"),
+                Out(5000000, "0014722ea32a89342f3707fd31282c0444cebc07f2bd"),
+                Out(5000000, "0014809809696ddb69e536ac2fc10f8562cc959f12de"),
+                Out(5000000, "0014892122ac1b376fe3c863d79d7ddd7ac2aa533398"),
+                Out(5000000, "001493cba5efe5544db0d968b096f8f3b6793e6c0242"),
+                Out(5000000, "0014ab135d0e1ad4383bf07bdb3f24b2e6de5fe0004d"),
+                Out(5000000, "0014be43409b389f6163822c5bb8686abaf1418f0227"),
+                Out(5000000, "0014e8d0929be1085e35269df5fa2b9ed616870ee48c"),
+                Out(5000000, "0014fe3f83981e5ca3c45f2ad0dc6db76b0bab9e1baf"),
+            });
+
+        /// <summary>A round of the given size: one premix, the rest remixes.</summary>
+        private static VerboseTransactionInfo SurgeRound(int size) => Tx(
+            new[] { In(Pool + 10_000) }.Concat(Enumerable.Range(1, size - 1).Select(_ => In(Pool))).ToArray(),
+            Enumerable.Repeat(Pool, size).Select(x => Out(x)).ToArray());
 
         /// <summary>A tx0 candidate of the same block; the detector reads only its txid.</summary>
         private static VerboseTransactionInfo Parent(uint256 txid)
